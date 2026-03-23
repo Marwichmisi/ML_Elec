@@ -1,0 +1,31 @@
+installation:
+  version: 6.2.0
+  installDate: 2026-03-02T22:56:29.260Z
+  lastUpdated: 2026-03-23T15:16:22.750Z
+modules:
+  - name: core
+    version: 6.2.0
+    installDate: 2026-03-02T22:56:29.260Z
+    lastUpdated: 2026-03-23T15:16:21.131Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmm
+    version: 6.2.0
+    installDate: 2026-03-02T22:56:29.149Z
+    lastUpdated: 2026-03-23T15:16:21.131Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: wds
+    version: 0.3.0
+    installDate: 2026-03-22T16:27:14.021Z
+    lastUpdated: 2026-03-23T15:16:22.750Z
+    source: external
+    npmPackage: bmad-method-wds-expansion
+    repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+ides:
+  - codex
+  - github-copilot
+  - antigravity
+  - opencode

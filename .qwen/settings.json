@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir *)",
+      "Bash(chmod *)",
+      "Bash(cp *)",
+      "Bash(openssl *)",
+      "Bash(xargs *)",
+      "Bash(docker compose build)",
+      "Bash(pnpm install)",
+      "Bash(npx *)",
+      "Bash(curl *)",
+      "Bash(bash)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(pnpm add *)",
+      "WebSearch",
+      "WebFetch(github.com)",
+      "WebFetch(www.npmjs.com)",
+      "WebFetch(context7.com)",
+      "WebFetch(lobehub.com)",
+      "Bash(source *)",
+      "Bash(context7-cli *)",
+      "Read(//home/marwane/.local/share/api2cli/skills/**)",
+      "Read(//home/marwane/.local/share/**)",
+      "Bash(find *)",
+      "Read(//home/marwane/.cli/context7-cli/skills/context7-cli/**)",
+      "Read(//home/marwane/.openclaw/workspace/skills/context7-cli/**)",
+      "Read(//home/marwane/.cli/context7-cli/src/**)",
+      "Read(//home/marwane/.cli/context7-cli/**)",
+      "Bash(bun *)",
+      "Bash(rm *)",
+      "Bash(sed *)",
+      "Bash(git init)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git add *)"
+    ]
+  },
+  "$version": 3
+}

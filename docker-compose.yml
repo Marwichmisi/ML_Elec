@@ -1,0 +1,91 @@
+# Docker Compose pour ML_Elec
+# Démarrage de tous les services : Edge Agent, MQTT Broker, Web Dashboard
+
+services:
+  # ============================================================================
+  # MQTT Broker (Mosquitto)
+  # ============================================================================
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ml-elec-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mqtt/config:/mosquitto/config:ro
+      - mqtt-data:/mosquitto/data
+      - mqtt-log:/mosquitto/log
+    networks:
+      - ml-elec-network
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$SYS/#", "-C", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # Edge Agent (Node.js + DuckDB + OPC-UA + MQTT)
+  # ============================================================================
+  edge-agent:
+    build:
+      context: .
+      dockerfile: packages/edge-agent/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: ml-elec-edge-agent
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - DUCKDB_DATA_DIR=/data/duckdb
+      - MQTT_BROKER_URL=mqtt://mqtt-broker:1883
+      - OPCUA_ENDPOINT=${OPCUA_ENDPOINT:-opc.tcp://host.docker.internal:4840}
+      - LOG_LEVEL=info
+    volumes:
+      - edge-data:/data
+    networks:
+      - ml-elec-network
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================================
+  # Web Dashboard (React + Vite + React Flow)
+  # ============================================================================
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: ml-elec-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:3001
+    networks:
+      - ml-elec-network
+    depends_on:
+      - edge-agent
+
+networks:
+  ml-elec-network:
+    driver: bridge
+
+volumes:
+  mqtt-data:
+  mqtt-log:
+  edge-data:

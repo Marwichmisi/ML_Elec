@@ -1,0 +1,7 @@
+config:
+  brief_level: complete
+status:
+  phase: "wds-1-project-brief"
+  current_step: "step-01-init"
+  mode: "create"
+updated_at: "2026-03-22"

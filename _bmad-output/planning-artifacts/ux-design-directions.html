@@ -1,0 +1,1336 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML_Elec - UX Design Directions</title>
+  <style>
+    :root {
+      --brand-primary: #f28a00;
+      --brand-ink: #2f3b46;
+      --brand-steel: #5f6b77;
+      --surface-base: #f4f6f8;
+      --surface-card: #ffffff;
+      --text-primary: #1f2933;
+      --text-secondary: #52606d;
+      --border: #d8dee5;
+      --success: #2e7d32;
+      --warning: #b7791f;
+      --error: #c0392b;
+      --radius: 14px;
+      --shadow: 0 12px 30px rgba(31, 41, 51, 0.12);
+      --soft-shadow: 0 6px 18px rgba(31, 41, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 0 0, #fff5e8 0%, #f4f6f8 45%, #edf1f5 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .page-shell {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2vw, 2rem);
+      letter-spacing: 0.01em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 950px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .control-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      margin-bottom: 18px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .control-label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-right: 4px;
+    }
+
+    .toggle-btn,
+    .control-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text-primary);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .toggle-btn:hover,
+    .control-btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--brand-primary);
+      box-shadow: 0 6px 15px rgba(242, 138, 0, 0.2);
+    }
+
+    .toggle-btn.active {
+      background: #fff3e0;
+      border-color: var(--brand-primary);
+      color: #9b5600;
+    }
+
+    .control-btn.primary {
+      background: var(--brand-primary);
+      border-color: #d97706;
+      color: #fff;
+    }
+
+    .control-btn[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .selection-info {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+      margin-right: 4px;
+      min-width: 150px;
+      text-align: right;
+    }
+
+    .direction-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    }
+
+    .direction-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--soft-shadow);
+      overflow: hidden;
+      display: grid;
+      gap: 10px;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    }
+
+    .direction-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+      border-color: rgba(242, 138, 0, 0.5);
+    }
+
+    .direction-card.selected {
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 2px rgba(242, 138, 0, 0.22), var(--shadow);
+    }
+
+    .card-head {
+      padding: 10px 12px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-title {
+      display: grid;
+      gap: 2px;
+    }
+
+    .card-title h2 {
+      margin: 0;
+      font-size: 0.98rem;
+      letter-spacing: 0.01em;
+    }
+
+    .card-title p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #eef2f6;
+      color: var(--brand-ink);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .card-body {
+      padding: 0 12px;
+    }
+
+    .mockup-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(120deg, #e9edf2, #dce3ea);
+      padding: 10px;
+      overflow: auto;
+      max-height: 410px;
+    }
+
+    .mockup-shell {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #dce2e8;
+      min-height: 640px;
+      width: 1120px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 52px 1fr;
+      box-shadow: inset 0 0 0 1px rgba(47, 59, 70, 0.03);
+    }
+
+    .preview-tablet .mockup-shell {
+      width: 820px;
+    }
+
+    .preview-mobile .mockup-shell {
+      width: 420px;
+      min-height: 680px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5eaf0;
+      background: #fbfcfd;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .brand-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      background: var(--brand-primary);
+      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+    }
+
+    .status-pill {
+      border-radius: 999px;
+      border: 1px solid #c8d0d9;
+      padding: 3px 8px;
+      font-weight: 700;
+      font-size: 0.68rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .status-pill.ok {
+      color: #1d5f24;
+      background: #eaf6eb;
+      border-color: #c8e5cb;
+    }
+
+    .status-pill.warn {
+      color: #7d520f;
+      background: #fff4df;
+      border-color: #f1d19c;
+    }
+
+    .status-pill.crit {
+      color: #8a261d;
+      background: #fdebea;
+      border-color: #f3c4bf;
+    }
+
+    .layout {
+      display: grid;
+      min-height: 0;
+    }
+
+    .panel {
+      border: 1px solid #e3e8ee;
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      min-height: 110px;
+    }
+
+    .panel h4 {
+      margin: 0;
+      font-size: 0.76rem;
+      color: #32404d;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .kpi {
+      border: 1px solid #e1e7ee;
+      border-radius: 10px;
+      background: #fbfcfe;
+      padding: 8px;
+      display: grid;
+      gap: 2px;
+      transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    .kpi:hover {
+      transform: translateY(-1px);
+      border-color: #f0bb72;
+      box-shadow: 0 8px 16px rgba(242, 138, 0, 0.16);
+    }
+
+    .kpi .label {
+      font-size: 0.67rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+    }
+
+    .kpi .value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .kpi .sub {
+      font-size: 0.67rem;
+      color: #5c6771;
+    }
+
+    .chart {
+      position: relative;
+      border: 1px solid #e1e8ef;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #ffffff, #f7f9fc);
+      min-height: 126px;
+      overflow: hidden;
+    }
+
+    .chart::before,
+    .chart::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      border-top: 1px dashed #dce3ea;
+    }
+
+    .chart::before {
+      top: 34%;
+    }
+
+    .chart::after {
+      top: 68%;
+    }
+
+    .line {
+      position: absolute;
+      inset: auto 0 8px 0;
+      height: 70%;
+      background: linear-gradient(180deg, rgba(242, 138, 0, 0.1), rgba(242, 138, 0, 0));
+      clip-path: polygon(0% 82%, 8% 78%, 14% 76%, 22% 69%, 28% 66%, 36% 60%, 44% 58%, 52% 52%, 60% 48%, 68% 44%, 76% 41%, 84% 35%, 92% 33%, 100% 28%, 100% 100%, 0% 100%);
+      border-bottom: 3px solid var(--brand-primary);
+    }
+
+    .machine-list,
+    .alert-list,
+    .action-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      border: 1px solid #e4e9ef;
+      border-radius: 8px;
+      padding: 7px 8px;
+      font-size: 0.74rem;
+      align-items: center;
+      transition: background 120ms ease, transform 120ms ease;
+      background: #fff;
+    }
+
+    .row:hover {
+      background: #faf5ec;
+      transform: translateX(1px);
+    }
+
+    .row strong {
+      font-size: 0.74rem;
+    }
+
+    .mini {
+      font-size: 0.66rem;
+      color: var(--text-secondary);
+    }
+
+    .badge {
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      padding: 3px 7px;
+      border: 1px solid #ced6df;
+      background: #f6f8fa;
+      color: #2f3b46;
+      white-space: nowrap;
+    }
+
+    .badge.crit {
+      color: #8a261d;
+      border-color: #f1bdb5;
+      background: #fdebea;
+    }
+
+    .badge.warn {
+      color: #7d520f;
+      border-color: #eccf99;
+      background: #fff4df;
+    }
+
+    .badge.ok {
+      color: #1d5f24;
+      border-color: #cae8cf;
+      background: #eaf6eb;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, #2f3b46, #25313c);
+      color: #f2f6f9;
+      padding: 10px 8px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+
+    .sidebar .nav {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 7px;
+      padding: 6px;
+      font-size: 0.67rem;
+      opacity: 0.92;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .sidebar .nav.active {
+      background: rgba(242, 138, 0, 0.22);
+      border-color: rgba(242, 138, 0, 0.75);
+      opacity: 1;
+      font-weight: 700;
+    }
+
+    .cta {
+      border: 1px solid #d97706;
+      border-radius: 8px;
+      background: var(--brand-primary);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 7px 10px;
+      cursor: pointer;
+      transition: filter 120ms ease, transform 120ms ease;
+      justify-self: start;
+    }
+
+    .cta:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+    }
+
+    .card-foot {
+      padding: 0 12px 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .fit-notes {
+      margin: 0;
+      display: grid;
+      gap: 5px;
+      padding-left: 16px;
+      font-size: 0.76rem;
+      color: #3e4a55;
+      line-height: 1.35;
+    }
+
+    .fit-notes li {
+      margin: 0;
+    }
+
+    .compare-sheet {
+      position: fixed;
+      inset: auto 14px 14px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 30px 50px rgba(31, 41, 51, 0.3);
+      max-height: calc(100vh - 30px);
+      width: calc(100vw - 28px);
+      display: none;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+      z-index: 9;
+    }
+
+    .compare-sheet.open {
+      display: grid;
+    }
+
+    .compare-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: #fcfdff;
+      gap: 10px;
+    }
+
+    .compare-head h3 {
+      margin: 0;
+      font-size: 0.92rem;
+    }
+
+    .compare-grid {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      grid-template-columns: 1fr 1fr;
+      overflow: auto;
+      background: #f3f6fa;
+    }
+
+    .compare-pane {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+      overflow: auto;
+      min-height: 320px;
+    }
+
+    .compare-pane h4 {
+      margin: 0;
+      font-size: 0.8rem;
+      color: #32404d;
+    }
+
+    .compare-pane .mockup-wrap {
+      max-height: none;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .d1 .layout { grid-template-columns: 170px 1fr 280px; }
+    .d1 .main-zone { padding: 10px; display: grid; gap: 8px; align-content: start; }
+    .d1 .rail { border-left: 1px solid #e5eaf0; padding: 10px; display: grid; gap: 8px; background: #fbfcfe; }
+
+    .d2 .layout { grid-template-columns: 1fr; padding: 10px; gap: 8px; align-content: start; }
+    .d2 .segment { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .d3 .layout { grid-template-columns: 1fr; padding: 10px; gap: 8px; align-content: start; }
+    .d3 .stack-two { display: grid; gap: 8px; grid-template-columns: 1.2fr 1fr; }
+
+    .d4 .layout { grid-template-columns: 340px 1fr; }
+    .d4 .left-pane { border-right: 1px solid #e5eaf0; padding: 10px; display: grid; gap: 8px; align-content: start; }
+    .d4 .right-pane { padding: 10px; display: grid; gap: 8px; align-content: start; }
+
+    .d5 .layout { grid-template-columns: 220px 1fr; }
+    .d5 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .d5 .tab { padding: 5px 9px; border: 1px solid #d9e0e8; border-radius: 8px; font-size: 0.7rem; font-weight: 700; }
+    .d5 .tab.active { border-color: #f0b66a; background: #fff2df; color: #9b5600; }
+    .d5 .workspace { padding: 10px; display: grid; gap: 8px; align-content: start; }
+
+    .d6 .layout { grid-template-columns: 280px 1fr; }
+    .d6 .queue { border-right: 1px solid #e5eaf0; padding: 10px; display: grid; gap: 8px; align-content: start; }
+    .d6 .runbook { padding: 10px; display: grid; gap: 8px; align-content: start; }
+
+    .d7 .layout { grid-template-columns: 1.1fr 0.9fr; padding: 10px; gap: 8px; }
+    .d7 .map {
+      border: 1px solid #dce3ea;
+      border-radius: 10px;
+      min-height: 360px;
+      position: relative;
+      background: linear-gradient(180deg, #f9fbfd, #edf2f7);
+      overflow: hidden;
+    }
+    .d7 .zone {
+      position: absolute;
+      border-radius: 8px;
+      border: 1px dashed #9aabbd;
+      background: rgba(255, 255, 255, 0.72);
+      font-size: 0.68rem;
+      padding: 6px;
+      font-weight: 700;
+      color: #32404d;
+    }
+
+    .d8 .layout { grid-template-columns: 1fr; padding: 12px; gap: 10px; align-content: start; }
+    .d8 .focus {
+      border: 1px solid #e1e8ef;
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      border: 1px solid #d7dfe8;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #3b4854;
+      background: #f9fbfd;
+    }
+
+    .pill.active {
+      border-color: #f0b66a;
+      background: #fff2df;
+      color: #9b5600;
+    }
+
+    .metric-strip {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metric {
+      border: 1px solid #e1e7ef;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fbfcfd;
+      display: grid;
+      gap: 2px;
+    }
+
+    .metric .x {
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    .metric .y {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .note {
+      font-size: 0.7rem;
+      color: #61707f;
+    }
+
+    .preview-mobile .direction-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .preview-mobile .control-bar {
+      align-items: flex-start;
+    }
+
+    .preview-mobile .selection-info {
+      text-align: left;
+      width: 100%;
+    }
+
+    .preview-mobile .d1 .layout,
+    .preview-mobile .d4 .layout,
+    .preview-mobile .d5 .layout,
+    .preview-mobile .d6 .layout,
+    .preview-mobile .d7 .layout,
+    .preview-mobile .d3 .stack-two {
+      grid-template-columns: 1fr;
+    }
+
+    .preview-mobile .sidebar,
+    .preview-mobile .d1 .rail,
+    .preview-mobile .d4 .left-pane,
+    .preview-mobile .d6 .queue,
+    .preview-mobile .d5 .layout > .sidebar {
+      display: none;
+    }
+
+    .preview-mobile .kpi-grid,
+    .preview-mobile .metric-strip {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .preview-tablet .d1 .layout { grid-template-columns: 96px 1fr; }
+    .preview-tablet .d1 .rail { display: none; }
+    .preview-tablet .d4 .layout { grid-template-columns: 260px 1fr; }
+    .preview-tablet .d6 .layout { grid-template-columns: 240px 1fr; }
+
+    @media (max-width: 780px) {
+      .direction-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .control-group {
+        width: 100%;
+      }
+
+      .selection-info {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body class="preview-desktop">
+  <div class="page-shell">
+    <section class="hero">
+      <h1>ML_Elec - Design Direction Showcase (Step 9)</h1>
+      <p>
+        8 design directions are generated from your UX decisions: "see in 3 seconds, decide in 60 seconds".
+        Select up to 2 directions and use compare mode to evaluate hierarchy, interaction style, and visual weight.
+      </p>
+    </section>
+
+    <section class="control-bar">
+      <div class="control-group" id="viewport-toggles">
+        <span class="control-label">Preview:</span>
+        <button class="toggle-btn active" data-view="desktop" type="button">Desktop</button>
+        <button class="toggle-btn" data-view="tablet" type="button">Tablet</button>
+        <button class="toggle-btn" data-view="mobile" type="button">Mobile</button>
+      </div>
+
+      <div class="control-group">
+        <span class="selection-info" id="selection-info">0 direction selected</span>
+        <button class="control-btn primary" id="compare-btn" type="button" disabled>Compare selected</button>
+        <button class="control-btn" id="reset-btn" type="button">Reset</button>
+      </div>
+    </section>
+
+    <main class="direction-grid" id="direction-grid">
+      <article class="direction-card" data-id="D1" data-name="Control Tower Dense">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D1 - Control Tower Dense</h2>
+            <p>High density, 3-column command center</p>
+          </div>
+          <div>
+            <span class="tag">Dense</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D1"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d1">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Site Tanger A</div>
+                <div class="top-right"><span class="status-pill warn">offline llm</span><span class="status-pill ok">sync ok</span></div>
+              </div>
+              <div class="layout">
+                <aside class="sidebar">
+                  <div class="nav active">Overview</div>
+                  <div class="nav">Alerts</div>
+                  <div class="nav">Machines</div>
+                  <div class="nav">Pipelines</div>
+                  <div class="nav">ROI</div>
+                  <div class="nav">Settings</div>
+                </aside>
+                <section class="main-zone">
+                  <div class="kpi-grid">
+                    <div class="kpi"><div class="label">Machine health</div><div class="value">78%</div><div class="sub">-4.2% / 24h</div></div>
+                    <div class="kpi"><div class="label">Critical alerts</div><div class="value">3</div><div class="sub">2 actionable now</div></div>
+                    <div class="kpi"><div class="label">Predicted failures</div><div class="value">5</div><div class="sub">within 10 days</div></div>
+                    <div class="kpi"><div class="label">Avoided downtime</div><div class="value">11h</div><div class="sub">this month</div></div>
+                  </div>
+                  <div class="panel">
+                    <h4>Machine health timeline</h4>
+                    <div class="chart"><div class="line"></div></div>
+                    <div class="note">M-07 trend down since 36h. Confidence 89%.</div>
+                  </div>
+                  <div class="panel">
+                    <h4>Priority machines</h4>
+                    <div class="machine-list">
+                      <div class="row"><div><strong>M-07 Compressor</strong><div class="mini">Bearing vibration growing</div></div><span class="badge crit">critical</span></div>
+                      <div class="row"><div><strong>M-03 Pump</strong><div class="mini">Thermal drift in stator</div></div><span class="badge warn">warning</span></div>
+                      <div class="row"><div><strong>M-12 Fan</strong><div class="mini">Stable after intervention</div></div><span class="badge ok">ok</span></div>
+                    </div>
+                  </div>
+                </section>
+                <aside class="rail">
+                  <div class="panel">
+                    <h4>Action now</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>Plan intervention M-07</strong><div class="mini">Tuesday 06:00 slot</div></div><span class="badge crit">now</span></div>
+                      <div class="row"><div><strong>Share recap to Sofiane</strong><div class="mini">WhatsApp format ready</div></div><span class="badge warn">1 tap</span></div>
+                    </div>
+                    <button class="cta" type="button">Apply recommended action</button>
+                  </div>
+                  <div class="panel">
+                    <h4>Recent feedback</h4>
+                    <div class="row"><div><strong>M-05 false alert</strong><div class="mini">Rule tuned by Sofiane</div></div><span class="badge ok">closed</span></div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Best for operations teams that need dense information in one glance.</li>
+            <li>Fast triage for Karim, rich context for Sofiane in the same screen.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D2" data-name="Signal First Cards">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D2 - Signal First Cards</h2>
+            <p>Card-first UX focused on confidence and action</p>
+          </div>
+          <div>
+            <span class="tag">Simple</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D2"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d2">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Morning round</div>
+                <div class="top-right"><span class="status-pill ok">network ok</span><span class="status-pill ok">ml active</span></div>
+              </div>
+              <div class="layout">
+                <div class="segment">
+                  <span class="pill active">All machines</span><span class="pill">Only critical</span><span class="pill">Intervention ready</span>
+                </div>
+                <div class="kpi-grid">
+                  <div class="kpi"><div class="label">Need action now</div><div class="value">2</div><div class="sub">out of 18 machines</div></div>
+                  <div class="kpi"><div class="label">Confidence avg</div><div class="value">87%</div><div class="sub">model confidence</div></div>
+                  <div class="kpi"><div class="label">Risk horizon</div><div class="value">6 days</div><div class="sub">earliest failure</div></div>
+                  <div class="kpi"><div class="label">Time to decide</div><div class="value">43 sec</div><div class="sub">last session</div></div>
+                </div>
+                <div class="panel">
+                  <h4>M-07 compressor card</h4>
+                  <div class="chart"><div class="line"></div></div>
+                  <div class="machine-list">
+                    <div class="row"><div><strong>Predicted bearing failure</strong><div class="mini">Within 6-8 days, confidence 91%</div></div><span class="badge crit">critical</span></div>
+                    <div class="row"><div><strong>Recommended action</strong><div class="mini">Plan intervention Tue 06:00-08:00</div></div><span class="badge warn">ready</span></div>
+                    <div class="row"><div><strong>Context note</strong><div class="mini">High ambient temperature this week</div></div><span class="badge ok">context</span></div>
+                  </div>
+                  <button class="cta" type="button">Confirm and share action</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Very clear for Karim: one card, one risk, one action.</li>
+            <li>Great for "see in 3 seconds" with minimum cognitive load.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D3" data-name="Timeline Dominant">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D3 - Timeline Dominant</h2>
+            <p>History and trend storytelling as first-class UI</p>
+          </div>
+          <div>
+            <span class="tag">Narrative</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D3"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d3">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Health timeline</div>
+                <div class="top-right"><span class="status-pill warn">2 alerts pending</span></div>
+              </div>
+              <div class="layout">
+                <div class="panel">
+                  <h4>48h machine story - M-07</h4>
+                  <div class="chart" style="min-height: 220px;"><div class="line"></div></div>
+                  <div class="note">Trend acceleration detected since yesterday 14:30. Recommended intervention in 6 days.</div>
+                </div>
+                <div class="stack-two">
+                  <div class="panel">
+                    <h4>Events timeline</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>08:15</strong><div class="mini">Vibration crossed warning baseline</div></div><span class="badge warn">event</span></div>
+                      <div class="row"><div><strong>11:00</strong><div class="mini">Confidence increased to 89%</div></div><span class="badge ok">model</span></div>
+                      <div class="row"><div><strong>13:20</strong><div class="mini">Push sent to Karim</div></div><span class="badge ok">sent</span></div>
+                    </div>
+                  </div>
+                  <div class="panel">
+                    <h4>Decision block</h4>
+                    <div class="machine-list">
+                      <div class="row"><div><strong>Action priority</strong><div class="mini">High - bearing risk</div></div><span class="badge crit">high</span></div>
+                      <div class="row"><div><strong>Downtime impact</strong><div class="mini">3h estimated if not handled</div></div><span class="badge warn">risk</span></div>
+                    </div>
+                    <button class="cta" type="button">Plan intervention slot</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Best when historical narrative is key to trust and training.</li>
+            <li>Strong for reviews, audits, and false-alert diagnosis.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D4" data-name="Split Monitor and Action">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D4 - Split Monitor and Action</h2>
+            <p>Master-detail split for rapid triage and intervention</p>
+          </div>
+          <div>
+            <span class="tag">Balanced</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D4"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d4">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Alert workstation</div>
+                <div class="top-right"><span class="status-pill crit">critical queue</span></div>
+              </div>
+              <div class="layout">
+                <aside class="left-pane">
+                  <div class="panel">
+                    <h4>Alert queue</h4>
+                    <div class="alert-list">
+                      <div class="row"><div><strong>M-07 compressor</strong><div class="mini">Bearing vibration +6.1%</div></div><span class="badge crit">p1</span></div>
+                      <div class="row"><div><strong>M-03 pump</strong><div class="mini">Stator heat drift +2.4%</div></div><span class="badge warn">p2</span></div>
+                      <div class="row"><div><strong>M-11 motor</strong><div class="mini">Back to nominal after fix</div></div><span class="badge ok">p3</span></div>
+                    </div>
+                  </div>
+                </aside>
+                <section class="right-pane">
+                  <div class="panel">
+                    <h4>Selected machine details - M-07</h4>
+                    <div class="metric-strip">
+                      <div class="metric"><div class="x">confidence</div><div class="y">91%</div></div>
+                      <div class="metric"><div class="x">horizon</div><div class="y">6 days</div></div>
+                      <div class="metric"><div class="x">severity</div><div class="y">critical</div></div>
+                    </div>
+                    <div class="chart"><div class="line"></div></div>
+                  </div>
+                  <div class="panel">
+                    <h4>Intervention decision</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>Recommended slot</strong><div class="mini">Tuesday 06:00 during planned pause</div></div><span class="badge warn">best</span></div>
+                      <div class="row"><div><strong>Resource needed</strong><div class="mini">Bearing 6205 + 1 technician</div></div><span class="badge ok">ready</span></div>
+                    </div>
+                    <button class="cta" type="button">Commit intervention plan</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Strong compromise between readability and operational depth.</li>
+            <li>Good candidate for both Karim (left queue) and Sofiane (detail pane).</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D5" data-name="Command Center Tabs">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D5 - Command Center Tabs</h2>
+            <p>Role-based workspace with strong module separation</p>
+          </div>
+          <div>
+            <span class="tag">Modular</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D5"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d5">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Sofiane workspace</div>
+                <div class="top-right"><span class="status-pill ok">role: engineer</span></div>
+              </div>
+              <div class="layout">
+                <aside class="sidebar">
+                  <div class="nav active">Monitor</div>
+                  <div class="nav">Pipeline editor</div>
+                  <div class="nav">Model health</div>
+                  <div class="nav">Site sync</div>
+                  <div class="nav">ROI review</div>
+                </aside>
+                <section class="workspace">
+                  <div class="tabs">
+                    <div class="tab active">Live status</div>
+                    <div class="tab">Predictions</div>
+                    <div class="tab">Actions</div>
+                    <div class="tab">Logs</div>
+                  </div>
+                  <div class="kpi-grid">
+                    <div class="kpi"><div class="label">Pipelines active</div><div class="value">12</div><div class="sub">1 warning</div></div>
+                    <div class="kpi"><div class="label">Model drift</div><div class="value">Low</div><div class="sub">no retrain needed</div></div>
+                    <div class="kpi"><div class="label">Data freshness</div><div class="value">2 sec</div><div class="sub">edge sync healthy</div></div>
+                    <div class="kpi"><div class="label">Action backlog</div><div class="value">4</div><div class="sub">2 assigned</div></div>
+                  </div>
+                  <div class="panel">
+                    <h4>Pipeline monitor</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>MQTT Source -> FFT -> IsolationForest</strong><div class="mini">Latency 180ms</div></div><span class="badge ok">running</span></div>
+                      <div class="row"><div><strong>OPC-UA -> Rule Engine -> Alert</strong><div class="mini">Packet jitter detected</div></div><span class="badge warn">watch</span></div>
+                    </div>
+                    <button class="cta" type="button">Open pipeline editor</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Excellent for technical users and module-heavy workflows.</li>
+            <li>Requires stricter simplification layer for Karim profile.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D6" data-name="Intervention Runbook">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D6 - Intervention Runbook</h2>
+            <p>Task queue + guided steps for field execution</p>
+          </div>
+          <div>
+            <span class="tag">Action</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D6"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d6">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Field intervention</div>
+                <div class="top-right"><span class="status-pill warn">2 pending tasks</span></div>
+              </div>
+              <div class="layout">
+                <aside class="queue">
+                  <div class="panel">
+                    <h4>Today queue</h4>
+                    <div class="machine-list">
+                      <div class="row"><div><strong>M-07 bearing check</strong><div class="mini">ETA 25 min</div></div><span class="badge crit">next</span></div>
+                      <div class="row"><div><strong>M-03 thermal verify</strong><div class="mini">ETA 15 min</div></div><span class="badge warn">later</span></div>
+                      <div class="row"><div><strong>M-15 weekly check</strong><div class="mini">Routine</div></div><span class="badge ok">queued</span></div>
+                    </div>
+                  </div>
+                </aside>
+                <section class="runbook">
+                  <div class="panel">
+                    <h4>Runbook - M-07 compressor</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>Step 1</strong><div class="mini">Isolate power and lockout</div></div><span class="badge ok">done</span></div>
+                      <div class="row"><div><strong>Step 2</strong><div class="mini">Measure vibration at bearing node</div></div><span class="badge warn">in progress</span></div>
+                      <div class="row"><div><strong>Step 3</strong><div class="mini">Replace bearing if > threshold</div></div><span class="badge">pending</span></div>
+                    </div>
+                    <button class="cta" type="button">Mark step complete</button>
+                  </div>
+                  <div class="panel">
+                    <h4>Prediction context</h4>
+                    <div class="chart"><div class="line"></div></div>
+                    <div class="note">Action-focused mode. Good for field execution with minimal navigation.</div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Very strong for post-alert execution and procedural consistency.</li>
+            <li>May need dashboard companion for strategic monitoring.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D7" data-name="Site Zone Heatmap">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D7 - Site Zone Heatmap</h2>
+            <p>Spatial view of machine risk by production area</p>
+          </div>
+          <div>
+            <span class="tag">Spatial</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D7"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d7">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Plant overview</div>
+                <div class="top-right"><span class="status-pill warn">zone b high risk</span></div>
+              </div>
+              <div class="layout">
+                <div class="map">
+                  <div class="zone" style="left:6%;top:8%;width:36%;height:32%;">Zone A - 6 machines - Stable</div>
+                  <div class="zone" style="left:46%;top:10%;width:46%;height:34%;border-color:#d89a40;background:rgba(255,240,219,0.8);">Zone B - 4 machines - Risk rising</div>
+                  <div class="zone" style="left:8%;top:48%;width:42%;height:40%;border-color:#d07d75;background:rgba(254,235,234,0.82);">Zone C - 3 machines - Critical M-07</div>
+                  <div class="zone" style="left:54%;top:52%;width:38%;height:36%;">Storage - 2 machines - Nominal</div>
+                </div>
+                <div class="panel">
+                  <h4>Zone risk summary</h4>
+                  <div class="machine-list">
+                    <div class="row"><div><strong>Zone C / M-07</strong><div class="mini">Bearing failure risk in 6 days</div></div><span class="badge crit">critical</span></div>
+                    <div class="row"><div><strong>Zone B / M-03</strong><div class="mini">Thermal drift, monitor 48h</div></div><span class="badge warn">warning</span></div>
+                    <div class="row"><div><strong>Zone A</strong><div class="mini">No anomaly in 72h</div></div><span class="badge ok">ok</span></div>
+                  </div>
+                  <button class="cta" type="button">Open selected machine detail</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Good for production managers and site-level planning.</li>
+            <li>Can complement, not replace, machine-level decision views.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="direction-card" data-id="D8" data-name="Focus Mode Decision">
+        <div class="card-head">
+          <div class="card-title">
+            <h2>D8 - Focus Mode Decision</h2>
+            <p>Minimal distraction, one machine one decision</p>
+          </div>
+          <div>
+            <span class="tag">Minimal</span>
+            <label><input type="checkbox" class="selector" aria-label="Select D8"></label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mockup-wrap">
+            <div class="mockup-shell d8">
+              <div class="topbar">
+                <div class="brand"><span class="brand-dot"></span> ML_Elec / Focus: M-07</div>
+                <div class="top-right"><span class="status-pill crit">decision required</span></div>
+              </div>
+              <div class="layout">
+                <div class="focus">
+                  <div class="pill-row"><span class="pill active">Machine M-07</span><span class="pill">Confidence 91%</span><span class="pill">Horizon 6 days</span></div>
+                  <div class="chart" style="min-height: 260px;"><div class="line"></div></div>
+                  <div class="panel">
+                    <h4>What is happening?</h4>
+                    <div class="note">Bearing vibration trend has accelerated over the last 36 hours. Similar pattern previously led to failure within 7 days.</div>
+                  </div>
+                  <div class="panel">
+                    <h4>What should I do now?</h4>
+                    <div class="action-list">
+                      <div class="row"><div><strong>Plan intervention</strong><div class="mini">Tuesday 06:00-08:00 recommended</div></div><span class="badge crit">primary</span></div>
+                      <div class="row"><div><strong>Share to Sofiane</strong><div class="mini">Summary text is ready to send</div></div><span class="badge warn">secondary</span></div>
+                    </div>
+                    <button class="cta" type="button">Confirm action now</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <ul class="fit-notes">
+            <li>Most direct execution path for field urgency moments.</li>
+            <li>Powerful complement mode when an alert needs immediate action.</li>
+          </ul>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <section class="compare-sheet" id="compare-sheet" aria-live="polite">
+    <div class="compare-head">
+      <h3>Side-by-side comparison</h3>
+      <button class="control-btn" id="close-compare" type="button">Close</button>
+    </div>
+    <div class="compare-grid">
+      <div class="compare-pane" id="pane-a"></div>
+      <div class="compare-pane" id="pane-b"></div>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      const body = document.body;
+      const toggleButtons = Array.from(document.querySelectorAll("#viewport-toggles .toggle-btn"));
+      const cards = Array.from(document.querySelectorAll(".direction-card"));
+      const checkboxes = Array.from(document.querySelectorAll(".selector"));
+      const compareBtn = document.getElementById("compare-btn");
+      const resetBtn = document.getElementById("reset-btn");
+      const info = document.getElementById("selection-info");
+      const compareSheet = document.getElementById("compare-sheet");
+      const closeCompare = document.getElementById("close-compare");
+      const paneA = document.getElementById("pane-a");
+      const paneB = document.getElementById("pane-b");
+
+      function selectedCards() {
+        return cards.filter(card => card.querySelector(".selector").checked);
+      }
+
+      function syncUI() {
+        const selected = selectedCards();
+        cards.forEach(card => {
+          card.classList.toggle("selected", card.querySelector(".selector").checked);
+        });
+        info.textContent = selected.length + " direction" + (selected.length > 1 ? "s" : "") + " selected";
+        compareBtn.disabled = selected.length !== 2;
+      }
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener("change", (event) => {
+          const selected = selectedCards();
+          if (selected.length > 2) {
+            event.target.checked = false;
+            return;
+          }
+          syncUI();
+        });
+      });
+
+      toggleButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          toggleButtons.forEach(x => x.classList.remove("active"));
+          btn.classList.add("active");
+          body.classList.remove("preview-desktop", "preview-tablet", "preview-mobile");
+          body.classList.add("preview-" + btn.dataset.view);
+        });
+      });
+
+      compareBtn.addEventListener("click", () => {
+        const selected = selectedCards();
+        if (selected.length !== 2) return;
+
+        const [a, b] = selected;
+        paneA.innerHTML = "";
+        paneB.innerHTML = "";
+
+        const titleA = document.createElement("h4");
+        titleA.textContent = a.dataset.id + " - " + a.dataset.name;
+        const wrapA = a.querySelector(".mockup-wrap").cloneNode(true);
+        paneA.appendChild(titleA);
+        paneA.appendChild(wrapA);
+
+        const titleB = document.createElement("h4");
+        titleB.textContent = b.dataset.id + " - " + b.dataset.name;
+        const wrapB = b.querySelector(".mockup-wrap").cloneNode(true);
+        paneB.appendChild(titleB);
+        paneB.appendChild(wrapB);
+
+        compareSheet.classList.add("open");
+      });
+
+      closeCompare.addEventListener("click", () => {
+        compareSheet.classList.remove("open");
+      });
+
+      resetBtn.addEventListener("click", () => {
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+        });
+        syncUI();
+        compareSheet.classList.remove("open");
+      });
+
+      syncUI();
+    })();
+  </script>
+</body>
+</html>

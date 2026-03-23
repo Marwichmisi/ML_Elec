@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "api2cli": {
+      "source": "melvynx/api2cli",
+      "sourceType": "github",
+      "computedHash": "c67b8554165dee6992f4901fd8ee76bec04f0d4bb8d8137278766e19ba57059b"
+    }
+  }
+}

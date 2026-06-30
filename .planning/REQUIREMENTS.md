@@ -93,30 +93,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1 | Pending |
-| CORE-02 | Phase 1 | Pending |
-| CORE-03 | Phase 1 | Pending |
-| CORE-04 | Phase 1 | Pending |
-| CORE-05 | Phase 1 | Pending |
-| CORE-06 | Phase 1 | Pending |
-| CORE-07 | Phase 1 | Pending |
-| ACQ-01 | Phase 2 | Pending |
-| ACQ-02 | Phase 2 | Pending |
-| ACQ-03 | Phase 2 | Pending |
-| ACQ-04 | Phase 2 | Pending |
-| DET-01 | Phase 3 | Pending |
-| DET-02 | Phase 3 | Pending |
-| DET-03 | Phase 3 | Pending |
-| DET-04 | Phase 3 | Pending |
-| VIS-01 | Phase 4 | Pending |
-| VIS-02 | Phase 4 | Pending |
-| VIS-03 | Phase 4 | Pending |
-| VIS-04 | Phase 4 | Pending |
-| VIS-05 | Phase 4 | Pending |
-| DEMO-01 | Phase 5 | Pending |
-| DEMO-02 | Phase 5 | Pending |
-| DEMO-03 | Phase 5 | Pending |
-| DEMO-04 | Phase 5 | Pending |
+| CORE-01 | Phase 1: Core Foundation | Pending |
+| CORE-02 | Phase 1: Core Foundation | Pending |
+| CORE-03 | Phase 1: Core Foundation | Pending |
+| CORE-04 | Phase 1: Core Foundation | Pending |
+| CORE-05 | Phase 1: Core Foundation | Pending |
+| CORE-07 | Phase 1: Core Foundation | Pending |
+| CORE-06 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| ACQ-01 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| ACQ-02 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| ACQ-03 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| ACQ-04 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| DET-01 | Phase 3: Anomaly Detection Engine | Pending |
+| DET-02 | Phase 3: Anomaly Detection Engine | Pending |
+| DET-03 | Phase 3: Anomaly Detection Engine | Pending |
+| DET-04 | Phase 3: Anomaly Detection Engine | Pending |
+| VIS-01 | Phase 4: Real-time & Historical Dashboard | Pending |
+| VIS-02 | Phase 4: Real-time & Historical Dashboard | Pending |
+| VIS-05 | Phase 4: Real-time & Historical Dashboard | Pending |
+| VIS-03 | Phase 5: Dashboard Configuration | Pending |
+| VIS-04 | Phase 5: Dashboard Configuration | Pending |
+| DEMO-03 | Phase 6: Documentation & Developer Experience | Pending |
+| DEMO-04 | Phase 6: Documentation & Developer Experience | Pending |
+| DEMO-01 | Phase 7: Demo & Multi-Asset Validation | Pending |
+| DEMO-02 | Phase 7: Demo & Multi-Asset Validation | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
@@ -131,4 +131,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-30*
-*Last updated: 2026-06-30 after initial definition*
+*Last updated: 2026-06-30 after roadmap creation — traceability updated*

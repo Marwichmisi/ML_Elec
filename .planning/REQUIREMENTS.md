@@ -127,7 +127,6 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Compétences obligatoires pour l'agent développeur:**
 - **Go skills** : Les skills Go (golang-*) sont obligatoires pour le développement du core. L'agent doit suivre les bonnes pratiques Go (error handling, naming, structs/interfaces, testing, lint) pour produire du code de qualité.
-- **Flutter skills** : Les skills Flutter sont obligatoires pour le développement du dashboard/UI. L'agent doit les utiliser pour la couche présentation.
 
 ---
 *Requirements defined: 2026-06-30*

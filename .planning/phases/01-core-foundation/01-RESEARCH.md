@@ -581,22 +581,19 @@ db.Close()
 | A2 | Wire is still maintained (archived but bug fixes) | Standard Stack | May need to switch to alternative DI |
 | A3 | NATS embedded mode doesn't expose network ports | Architecture | Security issue if ports exposed |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should we use YAML or TOML for config?**
-   - What we know: Both are supported by chosen libraries
-   - What's unclear: User preference, existing tooling
-   - Recommendation: YAML for comments support, TOML for strictness — ask user
+   - **RESOLVED: YAML** — Per Plan 01-01, YAML chosen for comments support and readability
+   - Original: Both supported, user preference unclear
 
 2. **How to handle plugin SDK versioning?**
-   - What we know: Phase 1 uses mock plugins only
-   - What's unclear: How to version plugin contracts for Phase 2
-   - Recommendation: Define plugin interface in Phase 1, version in Phase 2
+   - **RESOLVED: Deferred to Phase 2** — Plugin SDK (CORE-06) is explicitly out of scope for Phase 1
+   - Original: Define interface in Phase 1, version in Phase 2
 
 3. **What logger to use?**
-   - What we know: slog is available in Go 1.26.4, zerolog/zap are popular
-   - What's unclear: User preference, structured logging requirements
-   - Recommendation: Use slog (standard library) for simplicity
+   - **RESOLVED: slog (standard library)** — Per Plan 01-05, slog chosen for simplicity, zero dependencies
+   - Original: Multiple options available
 
 ## Environment Availability
 

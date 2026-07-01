@@ -3,15 +3,22 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"ml-elec/internal/config"
 	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 // SensorReading represents a sensor data point.
 type SensorReading struct {
@@ -27,8 +34,14 @@ type Store struct {
 }
 
 // New opens a SQLite database in WAL mode, runs migrations, and returns a Store.
-func New(dbPath string) (*Store, error) {
-	dsn := "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+func New(cfg *config.StorageConfig) (*Store, error) {
+	// Ensure parent directory exists
+	dir := filepath.Dir(cfg.Path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating storage directory: %w", err)
+	}
+
+	dsn := "file:" + cfg.Path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -46,7 +59,7 @@ func New(dbPath string) (*Store, error) {
 	}
 
 	// Run migrations
-	if err := runMigrations(dbPath); err != nil {
+	if err := runMigrations(db, cfg.Path); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
@@ -54,12 +67,23 @@ func New(dbPath string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-func runMigrations(dbPath string) error {
-	m, err := migrate.New("file://migrations", "sqlite://"+dbPath)
+func runMigrations(db *sql.DB, dbPath string) error {
+	d, err := iofs.New(migrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("creating migration source: %w", err)
+	}
+
+	driver, err := sqlite.WithInstance(db, &sqlite.Config{})
+	if err != nil {
+		return fmt.Errorf("creating sqlite driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", d, "sqlite", driver)
 	if err != nil {
 		return fmt.Errorf("creating migrator: %w", err)
 	}
-	defer m.Close()
+	// Note: m.Close() would close the underlying database connection.
+	// We skip it here — the Store.Close() method handles database cleanup.
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("running migrations: %w", err)

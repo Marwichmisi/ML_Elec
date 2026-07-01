@@ -3,11 +3,13 @@ package nats
 import (
 	"testing"
 	"time"
+
+	"ml-elec/internal/config"
 )
 
 func TestNewCreatesServer(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -16,7 +18,7 @@ func TestNewCreatesServer(t *testing.T) {
 
 func TestStartMakesServerReady(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -34,7 +36,7 @@ func TestStartMakesServerReady(t *testing.T) {
 
 func TestClientReturnsWorkingConnection(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -58,7 +60,7 @@ func TestClientReturnsWorkingConnection(t *testing.T) {
 
 func TestPublishSubscribe(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -101,7 +103,7 @@ func TestPublishSubscribe(t *testing.T) {
 
 func TestShutdownStopsServerCleanly(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestShutdownStopsServerCleanly(t *testing.T) {
 
 func TestConcurrentPubSub(t *testing.T) {
 	t.Parallel()
-	srv, err := New(-1)
+	srv, err := New(&config.NATSConfig{Host: "127.0.0.1", Port: -1})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}

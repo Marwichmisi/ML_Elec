@@ -7,6 +7,7 @@ import (
 
 	"github.com/nats-io/nats-server/v2/server"
 	natsclient "github.com/nats-io/nats.go"
+	"ml-elec/internal/config"
 )
 
 // Server wraps the NATS server for lifecycle management.
@@ -15,11 +16,11 @@ type Server struct {
 	ready bool
 }
 
-// New creates a new NATS server with the given port (-1 for random).
-func New(port int) (*Server, error) {
+// New creates a new NATS server from configuration.
+func New(cfg *config.NATSConfig) (*Server, error) {
 	opts := &server.Options{
-		Host:       "127.0.0.1",
-		Port:       port,
+		Host:       cfg.Host,
+		Port:       cfg.Port,
 		MaxConn:    1024,
 		MaxPayload: 1048576,
 	}

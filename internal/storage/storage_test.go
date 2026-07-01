@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"ml-elec/internal/config"
 )
 
 func TestNewOpensDBInWALMode(t *testing.T) {
@@ -13,7 +15,7 @@ func TestNewOpensDBInWALMode(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -35,7 +37,7 @@ func TestInsertAndGetSensors(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -75,7 +77,7 @@ func TestGetSensorsReturnsEmptyForNonExistentSensor(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -97,7 +99,7 @@ func TestGetSensorsRespectsLimit(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -131,7 +133,7 @@ func TestCheckCorruptionReturnsNilForHealthyDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestCheckCorruptionReturnsErrorForCorruptedDB(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	// Create a valid DB first
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -167,7 +169,7 @@ func TestCheckCorruptionReturnsErrorForCorruptedDB(t *testing.T) {
 	f.Close()
 
 	// Try to open and check corruption
-	store2, err := New(dbPath)
+	store2, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		// If New() fails due to corruption, that's acceptable
 		t.Logf("New() failed for corrupted DB (acceptable): %v", err)
@@ -186,7 +188,7 @@ func TestClose(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	store, err := New(dbPath)
+	store, err := New(&config.StorageConfig{Path: dbPath})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}

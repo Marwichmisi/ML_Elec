@@ -55,6 +55,11 @@ func (s *Server) Start() error {
 	return s.server.ListenAndServe()
 }
 
+// ServerAddr returns the server's listen address.
+func (s *Server) ServerAddr() string {
+	return s.server.Addr
+}
+
 // Shutdown gracefully shuts down the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)

@@ -9,13 +9,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core
 
-- [ ] **CORE-01**: Micro-noyau Go avec bus NATS embedded pour communication interne
-- [ ] **CORE-02**: Plugin manager avec isolation child process (HashiCorp go-plugin pattern)
-- [ ] **CORE-03**: API REST pour interaction externe (dashboard, configuration)
-- [ ] **CORE-04**: Stockage SQLite avec mode WAL pour séries temporelles
-- [ ] **CORE-05**: Configuration centralisée (core + plugins activables/désactivables)
+- [x] **CORE-01**: Micro-noyau Go avec bus NATS embedded pour communication interne
+- [x] **CORE-02**: Plugin manager avec isolation child process (HashiCorp go-plugin pattern)
+- [x] **CORE-03**: API REST pour interaction externe (dashboard, configuration)
+- [x] **CORE-04**: Stockage SQLite avec mode WAL pour séries temporelles
+- [x] **CORE-05**: Configuration centralisée (core + plugins activables/désactivables)
 - [ ] **CORE-06**: Plugin SDK avec contrats versionnés
-- [ ] **CORE-07**: Contrainte taille core < 5000 LOC (prévention core bloat)
+- [x] **CORE-07**: Contrainte taille core < 5000 LOC (prévention core bloat)
 
 ### Acquisition
 
@@ -93,12 +93,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORE-01 | Phase 1: Core Foundation | Pending |
-| CORE-02 | Phase 1: Core Foundation | Pending |
-| CORE-03 | Phase 1: Core Foundation | Pending |
-| CORE-04 | Phase 1: Core Foundation | Pending |
-| CORE-05 | Phase 1: Core Foundation | Pending |
-| CORE-07 | Phase 1: Core Foundation | Pending |
+| CORE-01 | Phase 1: Core Foundation | ✓ Complete |
+| CORE-02 | Phase 1: Core Foundation | ✓ Complete |
+| CORE-03 | Phase 1: Core Foundation | ✓ Complete |
+| CORE-04 | Phase 1: Core Foundation | ✓ Complete |
+| CORE-05 | Phase 1: Core Foundation | ✓ Complete |
+| CORE-07 | Phase 1: Core Foundation | ✓ Complete |
 | CORE-06 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
 | ACQ-01 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
 | ACQ-02 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
@@ -130,4 +130,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-30*
-*Last updated: 2026-06-30 after roadmap creation — traceability updated*
+*Last updated: 2026-07-01 after Phase 1 execution — CORE-01/02/03/04/05/07 marked complete*

@@ -1,0 +1,17 @@
+# ML-Elec Core Configuration
+# Docs: https://github.com/ml-elec/ml-elec
+
+nats:
+  host: 127.0.0.1
+  port: -1  # random port for embedded mode
+
+storage:
+  path: ./data/sensors.db
+
+api:
+  port: 8080
+
+plugins:
+  enabled: []
+  # - mqtt-sensor
+  # - modbus-gateway

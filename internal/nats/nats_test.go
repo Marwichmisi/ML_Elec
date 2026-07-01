@@ -82,7 +82,7 @@ func TestPublishSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubscribeSync() failed: %v", err)
 	}
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Publish
 	err = conn.Publish("test.subject", []byte("hello"))
@@ -144,7 +144,7 @@ func TestConcurrentPubSub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubscribeSync() failed: %v", err)
 	}
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Publish from multiple goroutines
 	done := make(chan bool, 10)

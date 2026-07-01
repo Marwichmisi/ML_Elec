@@ -100,8 +100,8 @@ plugins:
 }
 
 func (b *binaryInstance) cleanup() {
-	b.cmd.Process.Signal(syscall.SIGTERM)
-	b.cmd.Wait()
+	_ = b.cmd.Process.Signal(syscall.SIGTERM)
+	_ = b.cmd.Wait()
 	os.RemoveAll(b.tmpDir)
 }
 

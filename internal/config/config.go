@@ -57,8 +57,15 @@ func DefaultConfig() *Config {
 }
 
 // Load searches for a config file in multiple locations and returns the parsed config.
-// Search order: ./config.yaml, ~/.config/ml-elec/config.yaml, then defaults.
+// Search order: CONFIG_PATH env var, ./config.yaml, ~/.config/ml-elec/config.yaml, then defaults.
 func Load() (*Config, error) {
+	// Check CONFIG_PATH environment variable first
+	if configPath := os.Getenv("CONFIG_PATH"); configPath != "" {
+		if _, err := os.Stat(configPath); err == nil {
+			return loadFromFile(configPath)
+		}
+	}
+
 	home, _ := os.UserHomeDir()
 
 	paths := []string{

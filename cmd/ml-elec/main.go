@@ -5,9 +5,49 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
+
+	"ml-elec/internal/api"
+	"ml-elec/internal/config"
+	"ml-elec/internal/nats"
+	"ml-elec/internal/plugin"
+	"ml-elec/internal/storage"
 )
+
+// App holds all application components.
+type App struct {
+	Config     *config.Config
+	NATSServer *nats.Server
+	Store      *storage.Store
+	PluginMgr  *plugin.Manager
+	APIServer  *api.Server
+}
+
+// InitializeApp creates and wires all components manually.
+func InitializeApp(cfg *config.Config) (*App, error) {
+	natsServer, err := nats.New(&cfg.NATS)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := storage.New(&cfg.Storage)
+	if err != nil {
+		return nil, err
+	}
+
+	pluginMgr := plugin.NewManager()
+	apiServer := api.NewServer(&cfg.API, store)
+
+	return &App{
+		Config:     cfg,
+		NATSServer: natsServer,
+		Store:      store,
+		PluginMgr:  pluginMgr,
+		APIServer:  apiServer,
+	}, nil
+}
 
 func main() {
 	// Structured logging to stderr
@@ -17,8 +57,22 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Initialize all components via Wire DI
-	app, err := InitializeApp()
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	// Allow port override via ML_ELEC_PORT environment variable
+	if portStr := os.Getenv("ML_ELEC_PORT"); portStr != "" {
+		if port, err := strconv.Atoi(portStr); err == nil {
+			cfg.API.Port = port
+		}
+	}
+
+	// Initialize all components
+	app, err := InitializeApp(cfg)
 	if err != nil {
 		slog.Error("failed to initialize application", "error", err)
 		os.Exit(1)

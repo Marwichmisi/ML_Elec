@@ -42,3 +42,5 @@ tmp/
 
 # Data directory
 data/
+mock-plugin-test-binary
+mock-plugin

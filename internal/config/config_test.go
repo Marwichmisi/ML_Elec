@@ -77,8 +77,10 @@ func TestLoadDefaults(t *testing.T) {
 	// Ensure no config file exists in current directory
 	orig, _ := os.Getwd()
 	dir := t.TempDir()
-	os.Chdir(dir)
-	defer os.Chdir(orig)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(orig) }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -212,8 +214,10 @@ func TestLoadConfigPathSearchOrder(t *testing.T) {
 	// Test that Load() finds config in current directory first
 	orig, _ := os.Getwd()
 	dir := t.TempDir()
-	os.Chdir(dir)
-	defer os.Chdir(orig)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(orig) }()
 
 	// Create config in current directory
 	localConfig := filepath.Join(dir, "config.yaml")
@@ -269,8 +273,10 @@ func TestConfigPathSearchHomeDir(t *testing.T) {
 	// Test that Load() falls back to ~/.config/ml-elec/config.yaml
 	orig, _ := os.Getwd()
 	dir := t.TempDir()
-	os.Chdir(dir)
-	defer os.Chdir(orig)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(orig) }()
 
 	// Create the home config directory
 	home, _ := os.UserHomeDir()
@@ -327,8 +333,10 @@ func TestConfigConcurrency(t *testing.T) {
 	// Multiple goroutines calling Load() simultaneously should not race
 	orig, _ := os.Getwd()
 	dir := t.TempDir()
-	os.Chdir(dir)
-	defer os.Chdir(orig)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() failed: %v", err)
+	}
+	defer func() { _ = os.Chdir(orig) }()
 
 	// No config file — should return defaults
 	done := make(chan struct{})

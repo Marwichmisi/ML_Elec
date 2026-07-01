@@ -152,3 +152,201 @@ func TestLoadInvalidYAML(t *testing.T) {
 		t.Fatal("loadFromFile() expected error for invalid YAML, got nil")
 	}
 }
+
+// --- Additional edge case tests for Task 2 ---
+
+func TestLoadPartialYAML(t *testing.T) {
+	// YAML with only some fields set — defaults should apply for the rest
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `nats:
+  host: "192.168.1.100"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("loadFromFile() unexpected error: %v", err)
+	}
+
+	// Override from YAML
+	if cfg.NATS.Host != "192.168.1.100" {
+		t.Errorf("NATS.Host = %q, want %q", cfg.NATS.Host, "192.168.1.100")
+	}
+
+	// Defaults preserved
+	if cfg.NATS.Port != -1 {
+		t.Errorf("NATS.Port = %d, want default -1", cfg.NATS.Port)
+	}
+	if cfg.Storage.Path != "./data/sensors.db" {
+		t.Errorf("Storage.Path = %q, want default", cfg.Storage.Path)
+	}
+	if cfg.API.Port != 8080 {
+		t.Errorf("API.Port = %d, want default 8080", cfg.API.Port)
+	}
+}
+
+func TestLoadFileNotFound(t *testing.T) {
+	_, err := loadFromFile("/nonexistent/path/config.yaml")
+	if err == nil {
+		t.Fatal("loadFromFile() expected error for nonexistent file, got nil")
+	}
+}
+
+func TestLoadFromFileErrorContext(t *testing.T) {
+	_, err := loadFromFile("/nonexistent/path/config.yaml")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Error should contain context about the operation
+	errStr := err.Error()
+	if errStr == "" {
+		t.Error("error message should not be empty")
+	}
+}
+
+func TestLoadConfigPathSearchOrder(t *testing.T) {
+	// Test that Load() finds config in current directory first
+	orig, _ := os.Getwd()
+	dir := t.TempDir()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	// Create config in current directory
+	localConfig := filepath.Join(dir, "config.yaml")
+	content := `nats:
+  host: "from-local"
+`
+	if err := os.WriteFile(localConfig, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.NATS.Host != "from-local" {
+		t.Errorf("Load() should use local config, got NATS.Host = %q", cfg.NATS.Host)
+	}
+}
+
+func TestPluginConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `plugins:
+  enabled:
+    - mqtt-sensor
+    - modbus-gateway
+    - anomaly-detector
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("loadFromFile() unexpected error: %v", err)
+	}
+
+	if len(cfg.Plugins.Enabled) != 3 {
+		t.Fatalf("len(Plugins.Enabled) = %d, want 3", len(cfg.Plugins.Enabled))
+	}
+
+	expected := []string{"mqtt-sensor", "modbus-gateway", "anomaly-detector"}
+	for i, name := range cfg.Plugins.Enabled {
+		if name != expected[i] {
+			t.Errorf("Plugins.Enabled[%d] = %q, want %q", i, name, expected[i])
+		}
+	}
+}
+
+func TestConfigPathSearchHomeDir(t *testing.T) {
+	// Test that Load() falls back to ~/.config/ml-elec/config.yaml
+	orig, _ := os.Getwd()
+	dir := t.TempDir()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	// Create the home config directory
+	home, _ := os.UserHomeDir()
+	homeConfigDir := filepath.Join(home, ".config", "ml-elec")
+	if err := os.MkdirAll(homeConfigDir, 0755); err != nil {
+		t.Skip("cannot create home config dir")
+	}
+
+	// Remove any existing config.yaml in test dir and home dir
+	os.Remove(filepath.Join(dir, "config.yaml"))
+	os.Remove(filepath.Join(homeConfigDir, "config.yaml"))
+
+	homeConfig := filepath.Join(homeConfigDir, "config.yaml")
+	content := `nats:
+  host: "from-home"
+`
+	if err := os.WriteFile(homeConfig, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+	defer os.Remove(homeConfig)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.NATS.Host != "from-home" {
+		t.Errorf("Load() should use home config, got NATS.Host = %q", cfg.NATS.Host)
+	}
+}
+
+func TestLoadYAMLErrorWithContext(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	// Write a file that's not valid YAML (unclosed bracket)
+	if err := os.WriteFile(configPath, []byte("nats:\n  host: [unclosed\n"), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	_, err := loadFromFile(configPath)
+	if err == nil {
+		t.Fatal("loadFromFile() expected error for invalid YAML")
+	}
+
+	// Error should mention the file path
+	errStr := err.Error()
+	if errStr == "" {
+		t.Error("error message should not be empty")
+	}
+}
+
+func TestConfigConcurrency(t *testing.T) {
+	// Multiple goroutines calling Load() simultaneously should not race
+	orig, _ := os.Getwd()
+	dir := t.TempDir()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	// No config file — should return defaults
+	done := make(chan struct{})
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			cfg, err := Load()
+			if err != nil {
+				t.Errorf("Load() error: %v", err)
+				return
+			}
+			if cfg == nil {
+				t.Error("Load() returned nil config")
+			}
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}

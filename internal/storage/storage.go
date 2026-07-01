@@ -133,6 +133,43 @@ func (s *Store) CheckCorruption() error {
 	return nil
 }
 
+// NewForTest opens a SQLite database in WAL mode without running migrations.
+// Creates the sensor_readings table directly for test use.
+func NewForTest(dbPath string) (*Store, error) {
+	dsn := "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+
+	// Verify WAL mode
+	var journalMode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("verifying WAL mode: %w", err)
+	}
+	if journalMode != "wal" {
+		db.Close()
+		return nil, fmt.Errorf("WAL mode not enabled: got %s", journalMode)
+	}
+
+	// Create table directly for tests (no migration files needed)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS sensor_readings (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			sensor_id TEXT NOT NULL,
+			value REAL NOT NULL,
+			timestamp DATETIME NOT NULL
+		)
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating sensor_readings table: %w", err)
+	}
+
+	return &Store{db: db}, nil
+}
+
 // Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()

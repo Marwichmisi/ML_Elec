@@ -28,7 +28,14 @@
   4. SQLite stores and retrieves sensor readings in WAL mode
   5. Configuration file loads and controls which plugins are enabled/disabled
   6. Core stays under 5000 LOC (no domain logic in core)
-**Plans**: TBD
+**Plans:** 5 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Go module + config package (YAML loading, defaults, validation)
+- [ ] 01-02-PLAN.md — SQLite WAL storage + embedded NATS server
+- [ ] 01-03-PLAN.md — REST API (health + sensor endpoints)
+- [ ] 01-04-PLAN.md — Plugin manager (go-plugin, crash isolation, mock plugin)
+- [ ] 01-05-PLAN.md — Wire DI + main.go + graceful shutdown + integration tests
 
 ### Phase 2: Plugin SDK & MQTT Bridge
 **Goal**: Developers can write plugins using a versioned SDK, and ESP32 sensor data flows from MQTT through the plugin into the NATS bus with validated timestamps and ranges

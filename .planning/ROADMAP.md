@@ -7,7 +7,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Core Foundation** - Go microkernel with NATS bus, plugin lifecycle, REST API, SQLite storage, and configuration
+- [x] **Phase 1: Core Foundation** - Go microkernel with NATS bus, plugin lifecycle, REST API, SQLite storage, and configuration
 - [ ] **Phase 2: Plugin SDK & MQTT Bridge** - Versioned plugin contracts and Python MQTT plugin bridging ESP32 sensors to NATS
 - [ ] **Phase 3: Anomaly Detection Engine** - Threshold rules + IsolationForest ML detection with confidence scoring and operator feedback
 - [ ] **Phase 4: Real-time & Historical Dashboard** - React dashboard with live metrics, historical charts, and email notifications
@@ -31,11 +31,11 @@
 **Plans:** 5 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Go module + config package (YAML loading, defaults, validation)
-- [ ] 01-02-PLAN.md — SQLite WAL storage + embedded NATS server
-- [ ] 01-03-PLAN.md — REST API (health + sensor endpoints)
-- [ ] 01-04-PLAN.md — Plugin manager (go-plugin, crash isolation, mock plugin)
-- [ ] 01-05-PLAN.md — Wire DI + main.go + graceful shutdown + integration tests
+- [x] 01-01-PLAN.md — Go module + config package (YAML loading, defaults, validation)
+- [x] 01-02-PLAN.md — SQLite WAL storage + embedded NATS server
+- [x] 01-03-PLAN.md — REST API (health + sensor endpoints)
+- [x] 01-04-PLAN.md — Plugin manager (go-plugin, crash isolation, mock plugin)
+- [x] 01-05-PLAN.md — Wire DI + main.go + graceful shutdown + integration tests
 
 ### Phase 2: Plugin SDK & MQTT Bridge
 **Goal**: Developers can write plugins using a versioned SDK, and ESP32 sensor data flows from MQTT through the plugin into the NATS bus with validated timestamps and ranges
@@ -153,7 +153,7 @@ With `parallelization: true`, these phases can run simultaneously:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Foundation | 0/5 | Not started | - |
+| 1. Core Foundation | 5/5 | ✓ Complete | 2026-07-01 |
 | 2. Plugin SDK & MQTT Bridge | 0/5 | Not started | - |
 | 3. Anomaly Detection Engine | 0/4 | Not started | - |
 | 4. Real-time & Historical Dashboard | 0/3 | Not started | - |

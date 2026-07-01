@@ -3,6 +3,7 @@ package plugin
 import (
 	"fmt"
 	"net/rpc"
+	"os/exec"
 	"sync"
 
 	goplugin "github.com/hashicorp/go-plugin"
@@ -21,11 +22,15 @@ var HandshakeConfig = goplugin.HandshakeConfig{
 }
 
 // SensorPluginRPC is the go-plugin Plugin implementation for net/rpc.
-type SensorPluginRPC struct{}
+// On the server side (plugin binary), Impl must be set to the actual implementation.
+// On the client side (manager), Impl is not used.
+type SensorPluginRPC struct {
+	Impl SensorPlugin
+}
 
 // Server returns the RPC server for the plugin.
 func (p *SensorPluginRPC) Server(*goplugin.MuxBroker) (interface{}, error) {
-	return &SensorPluginRPCServer{}, nil
+	return &SensorPluginRPCServer{impl: p.Impl}, nil
 }
 
 // Client returns an RPC client that implements SensorPlugin.
@@ -87,24 +92,82 @@ func NewManager() *Manager {
 }
 
 // Launch starts a plugin as a child process if it is in the enabled list.
-// STUB: returns error until GREEN phase implementation.
 func (m *Manager) Launch(name, path string, enabledPlugins []string) error {
-	return fmt.Errorf("not implemented")
+	if !isPluginEnabled(name, enabledPlugins) {
+		return fmt.Errorf("plugin %q is not enabled", name)
+	}
+
+	client := goplugin.NewClient(&goplugin.ClientConfig{
+		HandshakeConfig: HandshakeConfig,
+		Plugins: map[string]goplugin.Plugin{
+			"sensor": &SensorPluginRPC{},
+		},
+		Cmd:     exec.Command(path),
+		Managed: true,
+	})
+
+	// Verify the plugin starts and connects
+	rpcClient, err := client.Client()
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("connecting to plugin %q: %w", name, err)
+	}
+
+	// Dispense the plugin to verify it works
+	_, err = rpcClient.Dispense("sensor")
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("dispensing plugin %q: %w", name, err)
+	}
+
+	m.mu.Lock()
+	m.clients[name] = client
+	m.mu.Unlock()
+
+	return nil
 }
 
 // Kill stops a running plugin and removes it from the manager.
-// STUB: returns error until GREEN phase implementation.
 func (m *Manager) Kill(name string) error {
-	return fmt.Errorf("not implemented")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	client, ok := m.clients[name]
+	if !ok {
+		return fmt.Errorf("plugin %q not found", name)
+	}
+
+	client.Kill()
+	delete(m.clients, name)
+	return nil
 }
 
 // ShutdownAll stops all running plugins.
-// STUB: no-op until GREEN phase implementation.
 func (m *Manager) ShutdownAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for name, client := range m.clients {
+		client.Kill()
+		delete(m.clients, name)
+	}
 }
 
 // IsRunning checks if a plugin is currently running.
-// STUB: returns false until GREEN phase implementation.
 func (m *Manager) IsRunning(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	_, ok := m.clients[name]
+	return ok
+}
+
+// isPluginEnabled checks if a plugin name is in the enabled list.
+func isPluginEnabled(name string, enabled []string) bool {
+	for _, e := range enabled {
+		if e == name {
+			return true
+		}
+	}
 	return false
 }

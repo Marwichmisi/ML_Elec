@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-hclog"
 
@@ -27,9 +25,8 @@ func main() {
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: plugin.HandshakeConfig,
 		Plugins: map[string]goplugin.Plugin{
-			"sensor": &plugin.SensorPluginRPC{},
+			"sensor": &plugin.SensorPluginRPC{Impl: &MockSensorPlugin{}},
 		},
 		Logger: logger,
 	})
-	_ = fmt.Sprintf // keep import
 }

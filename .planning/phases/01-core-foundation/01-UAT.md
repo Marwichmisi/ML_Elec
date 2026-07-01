@@ -1,9 +1,9 @@
 ---
-status: complete
+status: partial
 phase: 01-core-foundation
 source: 01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md, 01-05-SUMMARY.md
 started: 2026-07-01T06:45:00Z
-updated: 2026-07-01T07:00:00Z
+updated: 2026-07-01T07:15:00Z
 ---
 
 ## Current Test
@@ -25,7 +25,9 @@ coverage_id: 01-01-D1
 
 ### 3. Makefile avec targets build/test/lint/check-loc
 expected: `make build` compile, `make test` exécute les tests, `make lint` vérifie le code, `make check-loc` compte les lignes
-result: pass
+result: issue
+reported: "3/4 targets fonctionnent. Le Makefile est correctement structuré. Le seul problème est environnemental : golangci-lint n'est pas installé sur cette machine. La target lint existe et est syntaxiquement valide, elle fonctionnera une fois l'outil installé."
+severity: minor
 source: automated
 coverage_id: 01-01-D2
 
@@ -134,11 +136,22 @@ coverage_id: 01-05-D5
 ## Summary
 
 total: 20
-passed: 20
-issues: 0
+passed: 19
+issues: 1
 pending: 0
 skipped: 0
 
 ## Gaps
 
-[none]
+- truth: "Makefile lint target exécute golangci-lint"
+  status: failed
+  reason: "User reported: golangci-lint n'est pas installé sur cette machine. La target lint existe et est syntaxiquement valide, elle fonctionnera une fois l'outil installé."
+  severity: minor
+  test: 3
+  root_cause: "Environnement de développement: golangci-lint non installé"
+  artifacts:
+    - path: "Makefile"
+      issue: "Target lint dépend de golangci-lint non présent"
+  missing:
+    - "Installer golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+  debug_session: ""

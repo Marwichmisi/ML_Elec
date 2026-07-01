@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"ml-elec/internal/config"
 	"ml-elec/internal/storage"
@@ -140,6 +142,77 @@ func TestGetSensorsEmptyResult(t *testing.T) {
 
 	if len(dataSlice) != 0 {
 		t.Errorf("expected empty data array, got %d items", len(dataSlice))
+	}
+}
+
+func TestGetSensorsValidRequest(t *testing.T) {
+	store, err := storage.NewForTest(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	// Insert test data
+	ctx := context.Background()
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		ts := now.Add(time.Duration(i) * time.Second)
+		if err := store.InsertSensor(ctx, "sensor-test", float64(i)*1.5, ts); err != nil {
+			t.Fatalf("failed to insert sensor reading: %v", err)
+		}
+	}
+
+	cfg := &config.APIConfig{Port: 0}
+	srv := NewServer(cfg, store)
+
+	ts := httptest.NewServer(srv.server.Handler)
+	defer ts.Close()
+
+	// Query with limit
+	resp, err := http.Get(ts.URL + "/api/v1/sensors?sensor_id=sensor-test&limit=3")
+	if err != nil {
+		t.Fatalf("GET /api/v1/sensors failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	data, ok := result["data"]
+	if !ok {
+		t.Fatal("expected \"data\" key in response")
+	}
+
+	dataSlice, ok := data.([]interface{})
+	if !ok {
+		t.Fatal("expected data to be an array")
+	}
+
+	if len(dataSlice) != 3 {
+		t.Errorf("expected 3 readings (limit=3), got %d", len(dataSlice))
+	}
+
+	// Verify each reading has expected fields
+	for i, item := range dataSlice {
+		reading, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("reading %d is not a JSON object", i)
+		}
+		if _, ok := reading["sensor_id"]; !ok {
+			t.Errorf("reading %d missing sensor_id", i)
+		}
+		if _, ok := reading["value"]; !ok {
+			t.Errorf("reading %d missing value", i)
+		}
+		if _, ok := reading["timestamp"]; !ok {
+			t.Errorf("reading %d missing timestamp", i)
+		}
 	}
 }
 

@@ -1161,6 +1161,188 @@ func TestMessageHandlerEmptyPayload(t *testing.T) {
 	}
 }
 
+// TestQoSPerTopicConfig verifies per-topic QoS overrides are resolved correctly.
+func TestQoSPerTopicConfig(t *testing.T) {
+	tests := []struct {
+		name         string
+		defaultQoS   byte
+		qosPerTopic  map[string]byte
+		topic        string
+		expectedQoS  byte
+	}{
+		{
+			name:        "uses default when no override",
+			defaultQoS:  1,
+			qosPerTopic: map[string]byte{},
+			topic:       "esp32/temperature",
+			expectedQoS: 1,
+		},
+		{
+			name:        "uses override for specific topic",
+			defaultQoS:  1,
+			qosPerTopic: map[string]byte{"esp32/vibration": 0},
+			topic:       "esp32/vibration",
+			expectedQoS: 0,
+		},
+		{
+			name:        "uses default for non-matching topic",
+			defaultQoS:  1,
+			qosPerTopic: map[string]byte{"esp32/vibration": 0},
+			topic:       "esp32/temperature",
+			expectedQoS: 1,
+		},
+		{
+			name:        "default QoS 0",
+			defaultQoS:  0,
+			qosPerTopic: map[string]byte{},
+			topic:       "esp32/sensor1",
+			expectedQoS: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			qos := resolveQoS(tt.topic, tt.defaultQoS, tt.qosPerTopic)
+			if qos != tt.expectedQoS {
+				t.Errorf("resolveQoS(%q) = %d, want %d", tt.topic, qos, tt.expectedQoS)
+			}
+		})
+	}
+}
+
+// TestSubscribeAndBridgeWithQoS verifies subscription uses the specified QoS level.
+func TestSubscribeAndBridgeWithQoS(t *testing.T) {
+	broker, err := StartBroker(0)
+	if err != nil {
+		t.Fatalf("StartBroker failed: %v", err)
+	}
+	defer broker.Close()
+
+	addr, err := BrokerAddr(broker)
+	if err != nil {
+		t.Fatalf("BrokerAddr failed: %v", err)
+	}
+
+	client, err := ConnectClient(addr, "test-qos-subscribe")
+	if err != nil {
+		t.Fatalf("ConnectClient failed: %v", err)
+	}
+	defer client.Disconnect(250)
+
+	received := make(chan byte, 1)
+	err = SubscribeAndBridgeWithQoS(client, "qostest/#", 0, func(topic string, payload []byte) {
+		received <- 0
+	})
+	if err != nil {
+		t.Fatalf("SubscribeAndBridgeWithQoS failed: %v", err)
+	}
+
+	// Publish QoS 0 message
+	broker.Publish("qostest/msg", []byte("test"), false, 0)
+
+	select {
+	case <-received:
+		// success
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for QoS 0 message")
+	}
+}
+
+// TestConnectClientWithBackoff verifies ConnectClient accepts backoff configuration.
+func TestConnectClientWithBackoff(t *testing.T) {
+	broker, err := StartBroker(0)
+	if err != nil {
+		t.Fatalf("StartBroker failed: %v", err)
+	}
+	defer broker.Close()
+
+	addr, err := BrokerAddr(broker)
+	if err != nil {
+		t.Fatalf("BrokerAddr failed: %v", err)
+	}
+
+	backoffCfg := config.ReconnectBackoffConfig{
+		InitialInterval: "500ms",
+		MaxInterval:     "15s",
+		Multiplier:      2.0,
+	}
+
+	client, err := ConnectClientWithBackoff(addr, "test-backoff", backoffCfg)
+	if err != nil {
+		t.Fatalf("ConnectClientWithBackoff failed: %v", err)
+	}
+	if client == nil {
+		t.Fatal("ConnectClientWithBackoff returned nil client")
+	}
+	defer client.Disconnect(250)
+
+	if !client.IsConnected() {
+		t.Fatal("client not connected")
+	}
+}
+
+// TestErrorLogging verifies that parse errors are always logged via slog.
+func TestErrorLogging(t *testing.T) {
+	// Capture log output
+	var logBuf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Test 1: Invalid JSON → should log error (validation catches it first)
+	logBuf.Reset()
+	handler("esp32/sensor1", []byte("not json"))
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "error") {
+		t.Errorf("expected error log for invalid JSON, got: %s", logOutput)
+	}
+
+	// Test 2: Out-of-range value → should log validation error
+	logBuf.Reset()
+	outOfRange := fmt.Sprintf(`{"ts":%d,"values":{"temperature":999.0}}`, time.Now().Unix())
+	handler("esp32/sensor1", []byte(outOfRange))
+	logOutput = logBuf.String()
+	if !strings.Contains(logOutput, "validation failed") && !strings.Contains(logOutput, "out of range") {
+		t.Errorf("expected validation error log for out-of-range value, got: %s", logOutput)
+	}
+
+	// Test 3: Empty payload → should log error
+	logBuf.Reset()
+	handler("esp32/sensor1", []byte{})
+	logOutput = logBuf.String()
+	if !strings.Contains(logOutput, "error") && !strings.Contains(logOutput, "validation") {
+		t.Errorf("expected validation error log for empty payload, got: %s", logOutput)
+	}
+}
+
 // TestFullPipelineMQTTToNATS verifies the full MQTT → validate → NATS pipeline.
 func TestFullPipelineMQTTToNATS(t *testing.T) {
 	// Start embedded NATS server

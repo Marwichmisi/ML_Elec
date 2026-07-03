@@ -97,6 +97,38 @@ func ConnectClient(brokerAddr string, clientID string) (pahomqtt.Client, error) 
 	return client, nil
 }
 
+// ConnectClientWithBackoff creates a paho MQTT client with configurable reconnect backoff.
+func ConnectClientWithBackoff(brokerAddr string, clientID string, backoffCfg config.ReconnectBackoffConfig) (pahomqtt.Client, error) {
+	initialInterval, err := time.ParseDuration(backoffCfg.InitialInterval)
+	if err != nil {
+		initialInterval = 1 * time.Second
+	}
+	maxInterval, err := time.ParseDuration(backoffCfg.MaxInterval)
+	if err != nil {
+		maxInterval = 30 * time.Second
+	}
+
+	opts := pahomqtt.NewClientOptions().
+		AddBroker("tcp://" + brokerAddr).
+		SetClientID(clientID).
+		SetCleanSession(false).
+		SetAutoReconnect(true).
+		SetKeepAlive(30 * time.Second).
+		SetConnectRetryInterval(initialInterval).
+		SetMaxReconnectInterval(maxInterval).
+		SetWill("sys/mqtt-plugin/status", "offline", 1, true)
+
+	client := pahomqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		return nil, fmt.Errorf("mqtt connect: %w", token.Error())
+	}
+
+	// Publish online status
+	client.Publish("sys/mqtt-plugin/status", 1, true, "online")
+
+	return client, nil
+}
+
 // ConnectToNATS connects to the core's embedded NATS server with exponential backoff.
 // This does NOT create a new NATS server — it connects to the existing one.
 func ConnectToNATS(host string, port int, backoffCfg config.ReconnectBackoffConfig) (*natsclient.Conn, error) {
@@ -205,6 +237,25 @@ func SubscribeAndBridge(client pahomqtt.Client, topicFilter string, handler Mess
 		return fmt.Errorf("subscribe to %s: %w", topicFilter, token.Error())
 	}
 	return nil
+}
+
+// SubscribeAndBridgeWithQoS subscribes with a specific QoS level.
+func SubscribeAndBridgeWithQoS(client pahomqtt.Client, topicFilter string, qos byte, handler MessageHandler) error {
+	token := client.Subscribe(topicFilter, qos, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+		handler(msg.Topic(), msg.Payload())
+	})
+	if token.Wait() && token.Error() != nil {
+		return fmt.Errorf("subscribe to %s: %w", topicFilter, token.Error())
+	}
+	return nil
+}
+
+// resolveQoS returns the QoS level for a topic, using per-topic override if present.
+func resolveQoS(topic string, defaultQoS byte, qosPerTopic map[string]byte) byte {
+	if qos, ok := qosPerTopic[topic]; ok {
+		return qos
+	}
+	return defaultQoS
 }
 
 // SensorReading represents a parsed JSON sensor reading per D-13.
@@ -508,17 +559,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := ConnectClient(addr, cfg.MQTT.ClientID)
+	// Connect MQTT client with exponential backoff
+	client, err := ConnectClientWithBackoff(addr, cfg.MQTT.ClientID, cfg.MQTT.ReconnectBackoff)
 	if err != nil {
 		slog.Error("failed to connect client", "error", err)
 		os.Exit(1)
 	}
 	plugin.client = client
 
-	// Subscribe to configured topic
-	err = SubscribeAndBridge(client, cfg.MQTT.Topics.Subscribe, func(topic string, payload []byte) {
-		slog.Info("received message", "topic", topic, "payload_len", len(payload))
-	})
+	// Connect to core's embedded NATS server
+	natsConn, err := ConnectToNATS(cfg.MQTT.NATSHost, cfg.MQTT.NATSPort, cfg.MQTT.ReconnectBackoff)
+	if err != nil {
+		slog.Error("failed to connect to NATS", "error", err)
+		os.Exit(1)
+	}
+	plugin.natsConn = natsConn
+
+	// Initialize SQLite storage
+	store, err := storage.New(&cfg.Storage)
+	if err != nil {
+		slog.Error("failed to open storage", "error", err)
+		os.Exit(1)
+	}
+	plugin.store = store
+
+	// Build full pipeline handler: validate → NATS → SQLite
+	handler := buildMessageHandler(natsConn, store, cfg)
+
+	// Subscribe to configured topic with resolved QoS
+	qos := resolveQoS(cfg.MQTT.Topics.Subscribe, cfg.MQTT.QoS, cfg.MQTT.QoSPerTopic)
+	err = SubscribeAndBridgeWithQoS(client, cfg.MQTT.Topics.Subscribe, qos, handler)
 	if err != nil {
 		slog.Error("failed to subscribe", "error", err)
 		os.Exit(1)
@@ -527,6 +597,7 @@ func main() {
 	slog.Info("mqtt plugin running",
 		"port", cfg.MQTT.Port,
 		"topic", cfg.MQTT.Topics.Subscribe,
+		"qos", qos,
 	)
 
 	// gRPC plugin serve (when launched by plugin manager)

@@ -28,6 +28,28 @@ type SensorReading struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// Asset represents a machine or equipment in the ISA-95 hierarchy.
+type Asset struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Site      string    `json:"site"`
+	Area      string    `json:"area"`
+	Line      string    `json:"line"`
+	Type      string    `json:"type"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AssetSensor represents a sensor linked to an asset.
+type AssetSensor struct {
+	ID         int64     `json:"id"`
+	AssetID    int64     `json:"asset_id"`
+	SensorID   string    `json:"sensor_id"`
+	SensorType string    `json:"sensor_type"`
+	Topic      string    `json:"topic"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 // Store provides sensor data storage with SQLite WAL mode.
 type Store struct {
 	db *sql.DB
@@ -197,4 +219,145 @@ func NewForTest(dbPath string) (*Store, error) {
 // Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// CreateAsset inserts a new asset and returns it with auto-generated ID and timestamps.
+func (s *Store) CreateAsset(ctx context.Context, asset *Asset) (*Asset, error) {
+	// Apply defaults for empty fields
+	if asset.Site == "" {
+		asset.Site = "factory-1"
+	}
+	if asset.Type == "" {
+		asset.Type = "machine"
+	}
+
+	query, args, err := squirrel.Insert("assets").
+		Columns("name", "site", "area", "line", "type").
+		Values(asset.Name, asset.Site, asset.Area, asset.Line, asset.Type).
+		Suffix("RETURNING id, created_at, updated_at").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("building insert asset query: %w", err)
+	}
+
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&asset.ID, &asset.CreatedAt, &asset.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("inserting asset: %w", err)
+	}
+	return asset, nil
+}
+
+// GetAsset retrieves an asset by ID.
+func (s *Store) GetAsset(ctx context.Context, id int64) (*Asset, error) {
+	query, args, err := squirrel.Select("id", "name", "site", "area", "line", "type", "created_at", "updated_at").
+		From("assets").
+		Where(squirrel.Eq{"id": id}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("building select asset query: %w", err)
+	}
+
+	var asset Asset
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(
+		&asset.ID, &asset.Name, &asset.Site, &asset.Area, &asset.Line, &asset.Type,
+		&asset.CreatedAt, &asset.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying asset: %w", err)
+	}
+	return &asset, nil
+}
+
+// ListAssets returns assets with pagination.
+func (s *Store) ListAssets(ctx context.Context, page, limit int) ([]Asset, int, error) {
+	offset := (page - 1) * limit
+
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM assets").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("counting assets: %w", err)
+	}
+
+	// Fetch page
+	query, args, err := squirrel.Select("id", "name", "site", "area", "line", "type", "created_at", "updated_at").
+		From("assets").
+		OrderBy("id ASC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("building select assets query: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("querying assets: %w", err)
+	}
+	defer rows.Close()
+
+	var assets []Asset
+	for rows.Next() {
+		var a Asset
+		if err := rows.Scan(&a.ID, &a.Name, &a.Site, &a.Area, &a.Line, &a.Type, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scanning asset: %w", err)
+		}
+		assets = append(assets, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterating assets: %w", err)
+	}
+
+	return assets, total, nil
+}
+
+// CreateAssetSensor inserts a sensor linked to an asset.
+func (s *Store) CreateAssetSensor(ctx context.Context, assetID int64, sensor *AssetSensor) (*AssetSensor, error) {
+	query, args, err := squirrel.Insert("asset_sensors").
+		Columns("asset_id", "sensor_id", "sensor_type", "topic").
+		Values(assetID, sensor.SensorID, sensor.SensorType, sensor.Topic).
+		Suffix("RETURNING id, created_at").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("building insert asset sensor query: %w", err)
+	}
+
+	sensor.AssetID = assetID
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&sensor.ID, &sensor.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("inserting asset sensor: %w", err)
+	}
+	return sensor, nil
+}
+
+// GetAssetSensors returns sensors for a given asset.
+func (s *Store) GetAssetSensors(ctx context.Context, assetID int64) ([]AssetSensor, error) {
+	query, args, err := squirrel.Select("id", "asset_id", "sensor_id", "sensor_type", "topic", "created_at").
+		From("asset_sensors").
+		Where(squirrel.Eq{"asset_id": assetID}).
+		OrderBy("id ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("building select asset sensors query: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying asset sensors: %w", err)
+	}
+	defer rows.Close()
+
+	var sensors []AssetSensor
+	for rows.Next() {
+		var s AssetSensor
+		if err := rows.Scan(&s.ID, &s.AssetID, &s.SensorID, &s.SensorType, &s.Topic, &s.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning asset sensor: %w", err)
+		}
+		sensors = append(sensors, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating asset sensors: %w", err)
+	}
+
+	return sensors, nil
 }

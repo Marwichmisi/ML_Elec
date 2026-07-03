@@ -1,14 +1,16 @@
 # Phase 02: Plugin SDK & MQTT Bridge - Research
 
 **Researched:** 2026-07-03
-**Domain:** gRPC plugin SDK, MQTT bridge, data validation, asset registry
+**Domain:** gRPC plugin SDK, MQTT IoT bridge, data validation, asset registry
 **Confidence:** HIGH
 
 ## Summary
 
-Phase 02 builds the plugin ecosystem for ML_Elec: a gRPC-based SDK with proto files for multi-language plugin support, an MQTT bridge plugin as an external child process with an embedded broker, configurable data validation for sensor readings, and an asset/machine registry. The key architectural insight is that HashiCorp go-plugin supports both `net/rpc` and gRPC transport modes simultaneously — we can migrate the existing `net/rpc` plugin manager to gRPC without breaking backward compatibility. The MQTT broker will be embedded in the plugin (not in core) to respect the microkernel architecture, using Eclipse Paho Go for both broker and client functionality.
+Phase 2 transforms the Phase 1 placeholder `Echo` plugin contract into a production-grade, versioned gRPC SDK with proto files for multi-language plugin support. The MQTT bridge plugin runs as an external child process (via HashiCorp go-plugin) with an embedded Eclipse Paho broker, subscribes to ESP32 topics via wildcard discovery, validates incoming sensor data (configurable ranges + timestamp monotonicity), and publishes to NATS `sensor.*` subjects. An asset registry (SQLite tables + REST API) links machines to sensors with ISA-95/UNS topic hierarchy.
 
-**Primary recommendation:** Use `google.golang.org/grpc` for plugin SDK proto files, `github.com/eclipse/paho.mqtt.golang` for MQTT client/broker, extend the existing `internal/plugin/manager.go` to support gRPC transport, and add new SQLite tables for asset registry with REST API endpoints.
+The codebase already has grpc v1.74.2 as an indirect dependency, go-plugin v1.8.0 which supports both net/rpc and gRPC transports, and wire v0.7.0 for DI. The main gaps are: no protoc toolchain installed, no MQTT package in go.mod, and the plugin manager uses only net/rpc today.
+
+**Primary recommendation:** Install protoc toolchain first, define proto files in `pkg/sdk/v1/`, upgrade plugin manager for gRPC coexistence with net/rpc, then build MQTT plugin as external process with embedded Paho broker.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -19,7 +21,7 @@ Phase 02 builds the plugin ecosystem for ML_Elec: a gRPC-based SDK with proto fi
 - **D-03:** Broker dans un processus séparé du plugin MQTT — le plugin MQTT démarre le broker comme sous-processus
 - **D-04:** Cycle de vie broker: l'agent décide de la meilleure approche (plugin lance le broker)
 - **D-05:** Un fichier .proto par service: `lifecycle.proto` (Init/Start/Stop) + `sensor.proto` (Collect)
-- **D-06:** Code généré commit dans le repo — les plugins n'ont pas besoin de protoc pour compiler
+- **D-06:** Code généré commit dans le repo — les plugins n'ont pas besoin de protoc pour.compiler
 - **D-07:** Support Go + Python plugin via go-plugin dès v1
 - **D-08:** Plugin Python: wrapper simplifié avec contrat gRPC unique maintenu par la plateforme
 - **D-09:** Versioning dès v1: `pkg/sdk/v1/` — package unique pour v1
@@ -59,22 +61,26 @@ None — discussion stayed within phase scope
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| CORE-06 | Plugin SDK avec contrats versionnés | gRPC proto files in `pkg/sdk/v1/`, generated Go code, go-plugin gRPC transport mode |
-| ACQ-01 | Plugin acquisition MQTT: collecte données capteurs ESP32 → Core via NATS | Eclipse Paho Go embedded broker, MQTT→NATS bridge, ISA-95 topic hierarchy |
-| ACQ-02 | Support MQTT QoS 0/1/2 pour fiabilité variable | QoS 0 for high-frequency vibration, QoS 1 for alarms/status, configurable per topic |
-| ACQ-03 | Stockage données capteurs en SQLite avec timestamps | Extend existing `sensor_readings` table, add asset tables, migrations |
-| ACQ-04 | Gestion des assets/machines (enregistrement, hiérarchie) | SQLite tables `assets` + `asset_sensors`, REST API endpoints |
+| CORE-06 | Plugin SDK avec contrats versionnés | gRPC proto files in `pkg/sdk/v1/`, generated Go code committed, plugin manager upgraded for gRPC transport |
+| ACQ-01 | Plugin acquisition MQTT : collecte données capteurs ESP32 → Core via NATS | Eclipse Paho Go embedded broker, external child process via go-plugin, NATS `sensor.*` publish |
+| ACQ-02 | Support MQTT QoS 0/1/2 pour fiabilité variable | QoS 0+1 per SPEC (QoS 2 out of scope), Paho QoS parameter on publish/subscribe |
+| ACQ-03 | Stockage données capteurs en SQLite avec timestamps | Existing `sensor_readings` table, new `assets` + `asset_sensors` tables, migration 002 |
+| ACQ-04 | Gestion des assets/machines (enregistrement, hiérarchie) | SQLite tables with parent_id hierarchy, REST API endpoints, ISA-95/UNS topic mapping |
 </phase_requirements>
 
 ## Architectural Responsibility Map
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| gRPC plugin SDK | Core (pkg/sdk) | — | Proto files define plugin contracts, generated Go code |
-| MQTT bridge plugin | External (cmd/mqtt-plugin) | Core (plugin manager) | Child process via go-plugin, embedded broker |
-| Data validation | Core (internal/validation) | Plugin (mqtt-plugin) | Configurable rules in config.yaml, validation on ingestion |
-| Asset registry | Core (internal/storage) | Core (internal/api) | SQLite tables + REST API endpoints |
-| Plugin manager upgrade | Core (internal/plugin) | — | Extend to support gRPC transport alongside net/rpc |
+| gRPC plugin SDK (proto, generated code) | pkg/sdk/ | — | SDK is a standalone library consumed by plugins, not part of core runtime |
+| MQTT broker (embedded) | cmd/mqtt-plugin/ | — | Broker runs inside the MQTT plugin child process, not in core |
+| MQTT subscription & message parsing | cmd/mqtt-plugin/ | — | Plugin subscribes to ESP32 topics, parses JSON/binary payloads |
+| Data validation (ranges, timestamps) | cmd/mqtt-plugin/ | internal/validation/ | Validation runs at ingestion point (MQTT plugin) before NATS publish |
+| Asset registry (SQLite tables) | internal/storage/ | — | Storage layer manages asset persistence, same as sensor_readings |
+| Asset REST API | internal/api/ | — | HTTP handlers for asset CRUD, follows existing net/http pattern |
+| Plugin manager (gRPC transport) | internal/plugin/ | — | Upgrade existing manager to support gRPC alongside net/rpc |
+| Config (MQTT, validation, assets) | internal/config/ | — | Extend existing Config struct with new sections |
+| NATS publish (sensor data) | cmd/mqtt-plugin/ | internal/nats/ | MQTT plugin publishes to NATS, core provides NATS server |
 
 ## Standard Stack
 
@@ -82,116 +88,132 @@ None — discussion stayed within phase scope
 
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| `google.golang.org/grpc` | v1.74.2 | gRPC for plugin SDK | Official Go gRPC implementation, already in go.mod as indirect |
-| `google.golang.org/protobuf` | v1.36.7 | Protocol Buffers | Official protobuf library, already in go.mod as indirect |
-| `github.com/eclipse/paho.mqtt.golang` | v1.5.0 | MQTT client for embedded broker | Industry standard MQTT client for Go, supports v3.1.1 |
-| `github.com/hashicorp/go-plugin` | v1.8.0 | Plugin lifecycle with gRPC transport | Already in go.mod, supports both net/rpc and gRPC simultaneously |
-| `github.com/Masterminds/squirrel` | v1.5.4 | SQL query builder | Already in go.mod, parameterized queries |
-| `github.com/golang-migrate/migrate/v4` | v4.19.1 | Database migrations | Already in go.mod, file-based migrations |
-| `modernc.org/sqlite` | v1.53.0 | Pure Go SQLite driver | Already in go.mod, WAL mode support |
+| `github.com/eclipse/paho.mqtt.golang` | v1.5.1 | MQTT client library for Go | Official Eclipse Paho implementation, most widely used Go MQTT client, supports QoS 0/1/2, reconnection, LWT [CITED: github.com/eclipse/paho.mqtt.golang] |
+| `google.golang.org/grpc` | v1.81.0+ | gRPC framework for Go | Already indirect dep in go.mod (v1.74.2), industry standard for service-to-service RPC, proto-based code generation [CITED: grpc.io/docs] |
+| `google.golang.org/protobuf` | v1.36.7+ | Protobuf runtime for Go | Already indirect dep, required for proto message serialization [CITED: protobuf.dev] |
+| `github.com/hashicorp/go-plugin` | v1.8.0 | Plugin system with process isolation | Already in go.mod, supports both net/rpc AND gRPC transports natively [CITED: github.com/hashicorp/go-plugin] |
+| `github.com/google/wire` | v0.7.0 | Compile-time dependency injection | Already in go.mod, established pattern from Phase 1 [CITED: github.com/google/wire] |
 
 ### Supporting
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `github.com/hashicorp/go-hclog` | v1.6.3 | Structured logging for plugins | Required by go-plugin for plugin logging |
-| `github.com/rs/cors` | v1.11.1 | CORS middleware | Already in go.mod, dashboard cross-origin access |
+| `modernc.org/sqlite` | v1.53.0 | Pure-Go SQLite driver | Already in go.mod, use for new asset tables |
+| `github.com/Masterminds/squirrel` | v1.5.4 | SQL query builder | Already in go.mod, use for asset queries |
+| `github.com/golang-migrate/migrate/v4` | v4.19.1 | Database migrations | Already in go.mod, use for migration 002 (assets) |
+| `github.com/rs/cors` | v1.11.1 | CORS middleware | Already in go.mod, use for asset API CORS |
+
+### Tooling (must install)
+
+| Tool | Purpose | Installation |
+|------|---------|-------------|
+| `protoc` | Protocol Buffers compiler | `apt install protobuf-compiler` or download binary |
+| `protoc-gen-go` | Go code generation for proto messages | `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` |
+| `protoc-gen-go-grpc` | Go code generation for gRPC services | `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest` |
 
 ### Alternatives Considered
 
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Eclipse Paho Go | mochi-mqtt (embedded broker) | Paho is more mature, better documented, but mochi-mqtt is pure Go |
-| gRPC plugin SDK | net/rpc only | gRPC supports Python plugins natively, net/rpc is Go-only |
-| Squirrel query builder | Raw SQL strings | Squirrel provides parameterized queries, prevents SQL injection |
-| golang-migrate | goose | Both are mature, golang-migrate has better SQLite support |
+| Eclipse Paho Go | `github.com/gomqtt/mqtt` | Paho is more mature and widely adopted; gomqtt is lighter but less battle-tested |
+| Raw protoc | `buf` (buf.build) | buf adds linting and breaking change detection, but adds another tool dependency; raw protoc is simpler for v1 |
+| go-plugin gRPC | Custom gRPC plugin system | go-plugin already handles process lifecycle, health checks, and reconnection — reinventing is unnecessary |
+| slog (stdlib) | zerolog / zap | slog is stdlib since Go 1.21, zero dependencies; zerolog/zap offer marginal perf gain not needed for v1 |
 
 **Installation:**
 ```bash
-go get google.golang.org/grpc@v1.74.2
-go get google.golang.org/protobuf@v1.36.7
-go get github.com/eclipse/paho.mqtt.golang@v1.5.0
-# Existing dependencies already in go.mod:
-# github.com/hashicorp/go-plugin@v1.8.0
-# github.com/Masterminds/squirrel@v1.5.4
-# github.com/golang-migrate/migrate/v4@v4.19.1
-# modernc.org/sqlite@v1.53.0
+# Protoc toolchain
+sudo apt install -y protobuf-compiler  # or download from github.com/protocolbuffers/protobuf/releases
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# MQTT library
+go get github.com/eclipse/paho.mqtt.golang@v1.5.1
 ```
 
-**Version verification:** All recommended packages are already in go.mod or are standard Go libraries. Verified via `go.mod` inspection.
+**Version verification:** Before writing the Standard Stack table, verify each recommended package exists and is current using the ecosystem-appropriate command:
+```bash
+go list -m -versions github.com/eclipse/paho.mqtt.golang  # Confirmed: v1.5.1 latest
+go list -m -versions google.golang.org/grpc               # Confirmed: v1.81.0+ available
+go list -m -versions google.golang.org/protobuf            # Confirmed: v1.36.7+ available
+go list -m -versions github.com/hashicorp/go-plugin        # Confirmed: v1.8.0 (already in go.mod)
+```
 
 ## Package Legitimacy Audit
 
 | Package | Registry | Age | Downloads | Source Repo | Verdict | Disposition |
 |---------|----------|-----|-----------|-------------|---------|-------------|
-| google.golang.org/grpc | Go module | 8+ yrs | Standard | github.com/grpc/grpc-go | OK | Approved |
-| google.golang.org/protobuf | Go module | 5+ yrs | Standard | github.com/protocolbuffers/protobuf-go | OK | Approved |
-| github.com/eclipse/paho.mqtt.golang | Go module | 10+ yrs | Standard | github.com/eclipse/paho.mqtt.golang | OK | Approved |
-| github.com/hashicorp/go-plugin | Go module | 6+ yrs | Standard | github.com/hashicorp/go-plugin | OK | Approved |
-| github.com/Masterminds/squirrel | Go module | 9+ yrs | Standard | github.com/Masterminds/squirrel | OK | Approved |
-| github.com/golang-migrate/migrate/v4 | Go module | 7+ yrs | Standard | github.com/golang-migrate/migrate | OK | Approved |
-| modernc.org/sqlite | Go module | 5+ yrs | Standard | modernc.org/sqlite | OK | Approved |
+| `github.com/eclipse/paho.mqtt.golang` | Go module | 9+ years | Widely used | github.com/eclipse/paho.mqtt.golang | OK | Approved |
+| `google.golang.org/grpc` | Go module | 10+ years | Industry standard | github.com/grpc/grpc-go | OK | Approved |
+| `google.golang.org/protobuf` | Go module | 5+ years | Industry standard | github.com/protocolbuffers/protobuf-go | OK | Approved |
+| `github.com/hashicorp/go-plugin` | Go module | 7+ years | Widely used | github.com/hashicorp/go-plugin | OK | Approved (already in go.mod) |
+| `github.com/google/wire` | Go module | 6+ years | Widely used | github.com/google/wire | OK | Approved (already in go.mod) |
 
 **Packages removed due to [SLOP] verdict:** none
 **Packages flagged as suspicious [SUS]:** none
-
-*All packages are from reputable organizations (Google, Eclipse, HashiCorp) and are already in the project's go.mod or are standard Go libraries.*
 
 ## Architecture Patterns
 
 ### System Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        ML_Elec Phase 02                          │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │   ESP32      │───▶│   MQTT       │───▶│   Core       │      │
-│  │   Sensors    │    │   Plugin     │    │   (Go + NATS) │      │
-│  │   (WiFi)     │    │   (Child)    │    │              │      │
-│  └──────────────┘    │   ┌────────┐ │    │  ┌────────┐  │      │
-│                      │   │ Paho   │ │    │  │ NATS   │  │      │
-│                      │   │ Broker │ │    │  │ Bus    │  │      │
-│                      │   └────────┘ │    │  └────────┘  │      │
-│                      └──────────────┘    │  ┌────────┐  │      │
-│                                          │  │SQLite  │  │      │
-│  ┌──────────────┐    ┌──────────────┐    │  │Storage │  │      │
-│  │   Plugin     │◀──│   gRPC       │◀──│  └────────┘  │      │
-│  │   Manager    │    │   SDK        │    │  ┌────────┐  │      │
-│  │   (Core)     │    │   (proto)    │    │  │REST API│  │      │
-│  └──────────────┘    └──────────────┘    │  └────────┘  │      │
-│                                          └──────────────┘      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Data Flow: MQTT → NATS → Storage
-
-```
-ESP32 Sensor
+ESP32 Sensors
     │
-    │  MQTT (WiFi, QoS 0/1)
+    │ MQTT (QoS 0/1, port 1883)
     ▼
-MQTT Plugin (cmd/mqtt-plugin)
-    │  • Receives raw MQTT message
-    │  • Parses JSON or binary payload
-    │  • Validates data (range, timestamp, completeness)
-    │  • Publishes to NATS: sensor.{type}.{id}
-    ▼
-NATS Bus (embedded in Core)
-    │  • Routes messages to subscribers
-    │  • Core stores to SQLite
-    ▼
-SQLite Storage
-    │  • sensor_readings table (existing)
-    │  • assets table (new)
-    │  • asset_sensors table (new)
-    ▼
-REST API
-    │  • GET /api/v1/sensors (existing)
-    │  • GET /api/v1/assets (new)
-    │  • GET /api/v1/assets/{id}/sensors (new)
-    ▼
-Dashboard (Phase 4)
+┌─────────────────────────────────────────┐
+│  MQTT Plugin (child process)            │
+│  ┌─────────────────────────────────┐    │
+│  │ Embedded Paho Broker            │    │
+│  │ - Port 1883                     │    │
+│  │ - QoS 0+1                       │    │
+│  │ - Wildcard: esp32/#             │    │
+│  └─────────────┬───────────────────┘    │
+│                │                         │
+│  ┌─────────────▼───────────────────┐    │
+│  │ Message Parser                  │    │
+│  │ - JSON payloads                 │    │
+│  │ - Binary payloads (vibration)   │    │
+│  └─────────────┬───────────────────┘    │
+│                │                         │
+│  ┌─────────────▼───────────────────┐    │
+│  │ Data Validator                  │    │
+│  │ - Range checks (configurable)   │    │
+│  │ - Timestamp monotonicity        │    │
+│  │ - 3-level validation            │    │
+│  └─────────────┬───────────────────┘    │
+│                │                         │
+│  ┌─────────────▼───────────────────┐    │
+│  │ NATS Publisher                  │    │
+│  │ - Subject: sensor.{type}        │    │
+│  └─────────────┬───────────────────┘    │
+│                │                         │
+│  gRPC (go-plugin)                       │
+└────────┬────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  Core Process                          │
+│  ┌──────────────┐  ┌────────────────┐  │
+│  │ Plugin Mgr   │  │ NATS Server    │  │
+│  │ (gRPC+rpc)   │──│ (embedded)     │  │
+│  └──────────────┘  └───────┬────────┘  │
+│                            │            │
+│  ┌─────────────────────────▼────────┐  │
+│  │ Storage (SQLite WAL)             │  │
+│  │ - sensor_readings                │  │
+│  │ - assets (new)                   │  │
+│  │ - asset_sensors (new)            │  │
+│  └──────────────────────────────────┘  │
+│                                        │
+│  ┌──────────────────────────────────┐  │
+│  │ REST API (net/http)              │  │
+│  │ - GET /api/v1/sensors            │  │
+│  │ - POST /api/v1/assets            │  │
+│  │ - GET /api/v1/assets             │  │
+│  │ - GET /api/v1/assets/{id}/sensors│  │
+│  └──────────────────────────────────┘  │
+└────────────────────────────────────────┘
 ```
 
 ### Recommended Project Structure
@@ -200,116 +222,138 @@ Dashboard (Phase 4)
 pkg/
 ├── sdk/
 │   └── v1/
-│       ├── lifecycle.proto      # Plugin lifecycle service
-│       ├── sensor.proto         # Sensor collector service
-│       ├── lifecycle.pb.go      # Generated Go code
-│       ├── lifecycle_grpc.pb.go # Generated gRPC code
-│       ├── sensor.pb.go         # Generated Go code
-│       └── sensor_grpc.pb.go    # Generated gRPC code
+│       ├── proto/
+│       │   ├── lifecycle.proto      # PluginLifecycle service
+│       │   └── sensor.proto         # SensorCollector service
+│       ├── lifecycle.pb.go          # Generated (committed)
+│       ├── lifecycle_grpc.pb.go     # Generated (committed)
+│       ├── sensor.pb.go             # Generated (committed)
+│       ├── sensor_grpc.pb.go        # Generated (committed)
+│       └── types.go                 # Shared Go types (optional helpers)
 cmd/
-├── ml-elec/main.go             # Core binary (existing, extend)
-├── mock-plugin/main.go         # Mock plugin (existing, update to gRPC)
-└── mqtt-plugin/
-    └── main.go                 # MQTT bridge plugin (new)
+├── ml-elec/                         # Core binary (existing)
+├── mock-plugin/                     # Mock plugin (updated for gRPC)
+│   └── main.go
+└── mqtt-plugin/                     # MQTT bridge plugin (new)
+    └── main.go
 internal/
 ├── plugin/
-│   ├── manager.go              # Plugin manager (existing, extend for gRPC)
-│   └── manager_test.go         # Tests (existing, extend)
+│   ├── manager.go                   # Upgraded: gRPC + net/rpc coexistence
+│   └── grpc.go                      # gRPC plugin client wrapper (new)
 ├── validation/
-│   ├── validator.go            # Data validation logic (new)
-│   └── validator_test.go       # Tests (new)
+│   ├── validator.go                 # Data validation logic (new)
+│   └── validator_test.go
 ├── storage/
-│   ├── storage.go              # SQLite storage (existing, extend)
-│   ├── migrations/
-│   │   ├── 001_init.up.sql     # Existing
-│   │   ├── 002_assets.up.sql   # New: assets + asset_sensors tables
-│   │   └── 002_assets.down.sql # New: rollback
-│   └── ...
+│   ├── storage.go                   # Extended with asset methods
+│   └── migrations/
+│       ├── 001_init.up.sql          # Existing
+│       └── 002_assets.up.sql        # New: assets + asset_sensors
 ├── api/
-│   ├── server.go               # REST server (existing, extend)
-│   ├── assets.go               # Asset endpoints (new)
-│   └── ...
-└── config/
-    ├── config.go               # Config (existing, extend)
-    └── ...
+│   ├── server.go                    # Extended with asset routes
+│   ├── assets.go                    # Asset REST handlers (new)
+│   └── sensors.go                   # Extended with pagination
+├── config/
+│   └── config.go                    # Extended: mqtt, validation, assets sections
+└── nats/
+    └── nats.go                      # Existing (no changes)
 ```
 
-### Pattern 1: gRPC Plugin SDK with Proto Files
+### Pattern 1: gRPC Plugin with go-plugin
 
-**What:** Define plugin contracts via `.proto` files, generate Go code, use go-plugin gRPC transport.
+**What:** Use HashiCorp go-plugin with gRPC transport for the MQTT plugin, while maintaining backward compatibility with existing net/rpc plugins.
 
-**When to use:** When building versioned plugin contracts that need multi-language support (Go + Python).
+**When to use:** When you need process isolation, multi-language support (Go + Python), and typed contracts via proto.
 
 **Example:**
 ```go
-// Source: https://context7.com/hashicorp/go-plugin/llms.txt
-// Plugin interface definition
-type SensorPlugin interface {
-    Init(config []byte) error
-    Start() error
-    Stop() error
-    Collect() (*SensorReading, error)
+// Source: github.com/hashicorp/go-plugin (docs + golang-how-to skill)
+
+// Plugin interface (server-side implementation)
+type SensorCollector interface {
+    Collect(ctx context.Context, req *CollectRequest) (*CollectResponse, error)
 }
 
-// gRPC Plugin implementation
-type SensorGRPCPlugin struct {
-    plugin.NetRPCUnsupportedPlugin // Disable net/rpc support
-    Impl SensorPlugin
+// go-plugin GRPCPlugin implementation
+type SensorCollectorGRPCPlugin struct {
+    goplugin.Plugin
+    Impl SensorCollector
 }
 
-func (p *SensorGRPCPlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Server) error {
-    proto.RegisterSensorServer(s, &GRPCServer{Impl: p.Impl, broker: broker})
+func (p *SensorCollectorGRPCPlugin) GRPCServer(broker *goplugin.GRPCBroker, s *grpc.Server) error {
+    pb.RegisterSensorCollectorServer(s, &SensorCollectorGRPCServer{impl: p.Impl, broker: broker})
     return nil
 }
 
-func (p *SensorGRPCPlugin) GRPCClient(ctx context.Context, broker *plugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
-    return &GRPCClient{client: proto.NewSensorClient(c), broker: broker}, nil
+func (p *SensorCollectorGRPCPlugin) GRPCClient(ctx context.Context, broker *goplugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
+    return pb.NewSensorCollectorClient(c), nil
+}
+
+// Manager Launch with gRPC support
+func (m *Manager) LaunchGRPC(name, path string, enabledPlugins []string) error {
+    client := goplugin.NewClient(&goplugin.ClientConfig{
+        HandshakeConfig: HandshakeConfig,
+        Plugins: map[string]goplugin.Plugin{
+            "sensor": &SensorCollectorGRPCPlugin{},
+        },
+        Cmd:     exec.Command(path),
+        Managed: true,
+        AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+    })
+    // ... similar to existing Launch but with GRPC protocol
 }
 ```
 
-### Pattern 2: MQTT Bridge with Embedded Broker
+### Pattern 2: Embedded MQTT Broker in Plugin Process
 
-**What:** Run MQTT broker as subprocess within plugin, subscribe to topics, bridge to NATS.
+**What:** The MQTT plugin starts an embedded Paho broker as a goroutine (not a separate OS process), subscribes to topics, and bridges messages to NATS.
 
-**When to use:** When ESP32 sensors connect directly to the system via MQTT.
+**When to use:** When the broker is co-located with the plugin and doesn't need to serve external clients beyond the plugin itself.
 
 **Example:**
 ```go
-// Source: https://context7.com/eclipse-paho/paho.mqtt.golang/llms.txt
-// MQTT client configuration
-opts := mqtt.NewClientOptions().
-    AddBroker("tcp://localhost:1883").
-    SetClientID("mqtt-plugin").
-    SetKeepAlive(30 * time.Second).
-    SetAutoReconnect(true).
-    SetCleanSession(false) // Persistent sessions for offline messages
+// Source: eclipse/paho.mqtt.golang docs + mqtt-development skill
 
-// Message handler
-messageHandler := func(client mqtt.Client, msg mqtt.Message) {
+// Start embedded broker (Paho doesn't have an embedded broker;
+// use a lightweight broker like github.com/mochi-mqtt/server/v2
+// OR use Paho as a CLIENT connecting to a local broker)
+//
+// Decision: Use Paho as MQTT CLIENT connecting to a local broker
+// running as a subprocess (mosquitto) or embedded via go-mqtt/server.
+
+// Paho client for subscribing to ESP32 topics
+opts := mqtt.NewClientOptions().
+    AddBroker("tcp://127.0.0.1:1883").
+    SetClientID("ml-elec-mqtt-plugin").
+    SetAutoReconnect(true).
+    SetConnectRetryInterval(5 * time.Second).
+    SetMaxReconnectInterval(30 * time.Second).
+    SetCleanSession(false).  // D-18: persistent sessions
+    SetConnectionLostHandler(func(client mqtt.Client, err error) {
+        slog.Error("mqtt connection lost", "error", err)
+        // LWT will publish "offline" status
+    })
+
+client := mqtt.NewClient(opts)
+token := client.Connect()
+token.Wait()
+
+// Subscribe to ESP32 topics with wildcard
+client.Subscribe("esp32/#", 1, func(client mqtt.Client, msg mqtt.Message) {
     // Parse JSON or binary payload
     // Validate data
     // Publish to NATS
-}
-
-opts.SetDefaultPublishHandler(messageHandler)
-opts.SetOnConnectHandler(func(c mqtt.Client) {
-    // Subscribe to ESP32 topics
-    c.Subscribe("esp32/#", 1, nil)
 })
 ```
 
-### Pattern 3: Data Validation with Configurable Rules
+### Pattern 3: Data Validation Pipeline
 
-**What:** Validate sensor readings on ingestion with configurable thresholds in config.yaml.
+**What:** Three-level validation on ingestion: (1) value ranges, (2) data quality, (3) timestamp/completeness/size/health.
 
-**When to use:** When sensor data needs range checks, timestamp validation, and completeness checks.
+**When to use:** Every sensor reading passes through validation before storage. Configurable thresholds per sensor type.
 
 **Example:**
 ```go
-// Validation config structure
-type ValidationConfig struct {
-    Rules []ValidationRule `yaml:"rules"`
-}
+// Source: D-22 decision + validate-data skill
 
 type ValidationRule struct {
     SensorType string  `yaml:"sensor_type"`
@@ -318,87 +362,138 @@ type ValidationRule struct {
     Required   bool    `yaml:"required"`
 }
 
-// Validation logic
-func ValidateReading(reading SensorReading, rules []ValidationRule) error {
-    for _, rule := range rules {
-        if rule.SensorType == reading.Type {
-            if reading.Value < rule.Min || reading.Value > rule.Max {
-                return fmt.Errorf("value out of range: %f not in [%f, %f]", reading.Value, rule.Min, rule.Max)
-            }
+type Validator struct {
+    rules map[string]ValidationRule
+}
+
+func (v *Validator) Validate(reading SensorReading) error {
+    rule, ok := v.rules[reading.SensorType]
+    if !ok {
+        return fmt.Errorf("unknown sensor type: %s", reading.SensorType)
+    }
+
+    // Level 1: Range check
+    if reading.Value < rule.Min || reading.Value > rule.Max {
+        return &ValidationErr{
+            Reason:  "out_of_range",
+            Sensor:  reading.SensorType,
+            Value:   reading.Value,
+            Min:     rule.Min,
+            Max:     rule.Max,
         }
     }
-    // Check timestamp monotonicity
-    // Check required fields
+
+    // Level 2: Timestamp monotonicity
+    if reading.Timestamp.Before(reading.PrevTimestamp) {
+        return &ValidationErr{Reason: "non_monotonic_timestamp"}
+    }
+
+    // Level 3: Data quality (completeness, size, health)
+    // ... additional checks
+
     return nil
+}
+```
+
+### Pattern 4: Asset Registry with Hierarchy
+
+**What:** SQLite tables for assets (machines) and asset_sensors with parent_id hierarchy, exposed via REST API.
+
+**When to use:** When you need to organize sensors under machines/areas/sites with queryable relationships.
+
+**Example:**
+```go
+// Source: D-23/24/25 decisions + rest-api-design skill
+
+// REST endpoints following conventions (D-25)
+mux.HandleFunc("POST /api/v1/assets", s.CreateAssetHandler)       // 201 Created
+mux.HandleFunc("GET /api/v1/assets", s.ListAssetsHandler)         // 200 + pagination
+mux.HandleFunc("GET /api/v1/assets/{id}", s.GetAssetHandler)      // 200 or 404
+mux.HandleFunc("GET /api/v1/assets/{id}/sensors", s.ListAssetSensorsHandler) // 200
+mux.HandleFunc("DELETE /api/v1/assets/{id}", s.DeleteAssetHandler) // 405 Method Not Allowed
+
+// Response format (D-23)
+type PaginatedResponse[T any] struct {
+    Data       []T `json:"data"`
+    Pagination struct {
+        Page  int `json:"page"`
+        Limit int `json:"limit"`
+        Total int `json:"total"`
+    } `json:"pagination"`
 }
 ```
 
 ### Anti-Patterns to Avoid
 
-- **Hardcoded validation thresholds:** Use config.yaml for all thresholds — makes tuning possible without recompilation.
-- **MQTT broker in core:** Broker must run in plugin process, not core — respects microkernel architecture.
-- **Raw SQL queries:** Always use squirrel query builder for parameterized queries — prevents SQL injection.
-- **Ignoring MQTT QoS:** Use QoS 1 for alarms/status, QoS 0 for high-frequency vibration — match QoS to data criticality.
+- **Hardcoding validation thresholds:** Use config.yaml (D-26/27). Every threshold must be configurable.
+- **Putting MQTT logic in core:** MQTT broker and subscription logic lives in `cmd/mqtt-plugin/`, not in core. Core only provides NATS bus.
+- **Skipping gRPC error codes:** Always return specific gRPC status codes (codes.InvalidArgument, codes.NotFound, etc.), never raw errors.
+- **Ignoring LWT (Last Will and Testament):** Every MQTT client must configure LWT for offline status (D-18).
+- **Using `cleanSession=true`:** Use `cleanSession=false` for persistent sessions so the broker queues messages during disconnection (D-18).
+- **Broad wildcard subscriptions:** Use `esp32/#` for server-side discovery, but subscribe to specific device topics when possible (mqtt-development skill).
 
 ## Don't Hand-Roll
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| MQTT protocol handling | Custom MQTT parser | Eclipse Paho Go | Industry standard, handles QoS, reconnection, sessions |
-| gRPC code generation | Manual protobuf | protoc + protoc-gen-go | Official tools, type-safe, multi-language support |
-| Plugin process isolation | Custom process manager | HashiCorp go-plugin | Battle-tested, crash isolation, gRPC support |
-| SQL query building | String concatenation | Squirrel | Parameterized queries, prevents SQL injection |
-| Database migrations | Manual SQL scripts | golang-migrate | Version control, rollback support |
+| MQTT client/broker | Custom TCP server | Eclipse Paho Go + embedded broker | Paho handles QoS, reconnection, LWT, session management — reinventing is error-prone |
+| gRPC code generation | Manual RPC stubs | protoc + protoc-gen-go + protoc-gen-go-grpc | Proto files are the standard contract, generate type-safe code |
+| Plugin process management | Custom process supervisor | HashiCorp go-plugin | Already in go-plugin v1.8.0, handles lifecycle, health checks, reconnection |
+| SQL query building | String concatenation | squirrel (already in go.mod) | Prevents SQL injection, type-safe queries |
+| Database migrations | Manual SQL execution | golang-migrate (already in go.mod) | Versioned, repeatable, supports up/down |
+| Data validation framework | Custom switch/case validation | Config-driven validator struct | Configurable thresholds, testable, reusable |
 
-**Key insight:** MQTT protocol is complex (QoS handshakes, session management, LWT). Don't reimplement it — use Paho Go which has been battle-tested in production IoT systems for 10+ years.
+**Key insight:** The MQTT + gRPC + plugin isolation stack is deceptively complex. Paho alone has 40+ configuration options for reconnection, QoS, and session management. go-plugin handles process lifecycle, stdin/stdout protocol negotiation, and health monitoring. Using these battle-tested libraries prevents months of debugging edge cases.
 
 ## Common Pitfalls
 
-### Pitfall 1: MQTT Broker in Core Process
-**What goes wrong:** MQTT broker runs in core process, violating microkernel architecture.
-**Why it happens:** Simpler to embed broker directly in core.
-**How to avoid:** Run broker as subprocess within MQTT plugin (D-03). Plugin manages broker lifecycle.
-**Warning signs:** Core LOC exceeds 5000, core crashes when broker fails.
+### Pitfall 1: protoc Version Mismatch
+**What goes wrong:** protoc version doesn't match protoc-gen-go / protoc-gen-go-grpc versions, causing generated code compilation errors.
+**Why it happens:** The three tools must be compatible — protoc-gen-go v1.36+ requires protoc v21+, and protoc-gen-go-grpc v1.5+ requires protoc-gen-go v1.36+.
+**How to avoid:** Install all three tools at compatible versions. Pin versions in a Makefile or script. Use `buf` for version management if complexity grows.
+**Warning signs:** Compilation errors like "unknown field option" or "invalid value for option go_package".
 
-### Pitfall 2: QoS Mismatch for Data Types
-**What goes wrong:** Using QoS 0 for critical alarms (data loss) or QoS 1 for high-frequency vibration (unnecessary overhead).
-**Why it happens:** Default QoS applied to all topics.
-**How to avoid:** Configure QoS per topic type: QoS 0 for vibration (replaceable), QoS 1 for alarms/status (critical).
-**Warning signs:** Alarm messages lost during network blips, vibration data delayed.
+### Pitfall 2: go-plugin gRPC vs net/rpc Confusion
+**What goes wrong:** Plugin manager tries to use gRPC transport for a plugin compiled with net/rpc, or vice versa, causing connection failures.
+**Why it happens:** go-plugin supports both protocols but they must match between client and server.
+**How to avoid:** Use `AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC}` in ClientConfig for gRPC plugins. Keep the existing `SensorPluginRPC` for backward compat, add `SensorCollectorGRPCPlugin` for new gRPC plugins.
+**Warning signs:** "failed to dispense plugin" error, timeout connecting to plugin.
 
-### Pitfall 3: Non-Idempotent QoS 1 Consumers
-**What goes wrong:** Duplicate messages at QoS 1 cause duplicate processing (e.g., double-counting alarms).
-**Why it happens:** QoS 1 guarantees delivery but may duplicate.
-**How to avoid:** Make consumers idempotent — use message IDs and timestamp-keyed upserts.
-**Warning signs:** Duplicate alerts, double-counted sensor readings.
+### Pitfall 3: MQTT Broker Port Conflict
+**What goes wrong:** MQTT broker starts on port 1883 but another service (mosquitto) is already using it, causing bind failure.
+**Why it happens:** Port 1883 is the MQTT default; other MQTT brokers may be installed on the system.
+**How to avoid:** Check port availability before starting broker. Make port configurable in config.yaml (D-02 says fixed 1883, but config override is prudent). Log clear error message on bind failure.
+**Warning signs:** "address already in use" error on broker startup.
 
-### Pitfall 4: Missing MQTT Reconnection Logic
-**What goes wrong:** Plugin crashes when broker restarts, no automatic reconnection.
-**Why it happens:** Assuming stable MQTT connection.
-**How to avoid:** Configure auto-reconnect with exponential backoff (D-18), LWT for status, persistent sessions.
-**Warning signs:** Plugin stops receiving messages after broker restart.
+### Pitfall 4: MQTT Message Ordering Under Load
+**What goes wrong:** At 100 msg/s, messages arrive out of order or are dropped due to channel buffer overflow.
+**Why it happens:** Go channels have default buffer size 0; MQTT callback goroutine may block if NATS publish is slow.
+**How to avoid:** Use buffered channel for message queue (`make(chan SensorReading, 1000)`). Process messages in a dedicated goroutine. Benchmark with 100 msg/s target (D-17).
+**Warning signs:** Increasing latency in benchmarks, messages appearing out of timestamp order.
 
-### Pitfall 5: Core Bloat from Validation Logic
-**What goes wrong:** Core exceeds 5000 LOC by adding validation logic.
-**Why it happens:** Validation seems like core responsibility.
-**How to avoid:** Keep validation in plugin process, core only provides config loading and storage.
-**Warning signs:** Core LOC grows past 4500, validation tests in core package.
+### Pitfall 5: SQLite Concurrent Write Contention
+**What goes wrong:** Asset creation REST endpoint and MQTT plugin both write to SQLite simultaneously, causing "database is locked" errors.
+**Why it happens:** SQLite allows only one writer at a time (even in WAL mode); concurrent writes cause SQLITE_BUSY.
+**How to avoid:** Use `busy_timeout` pragma (already set to 5000ms in Phase 1). Serialize asset writes with sync.Mutex. Use WAL mode (already configured). Keep write transactions short.
+**Warning signs:** "database is locked" errors under load, slow REST API responses during MQTT data ingestion.
 
-### Pitfall 6: SQLite Write Contention
-**What goes wrong:** Concurrent writes from MQTT plugin and REST API cause "database locked" errors.
-**Why it happens:** SQLite serializes writes even in WAL mode.
-**How to avoid:** Use WAL mode (already configured), batch inserts, busy timeout (already configured).
-**Warning signs:** "database locked" errors in logs, slow write performance.
+### Pitfall 6: Generated Proto Code Drift
+**What goes wrong:** Proto files are edited but generated code is not regenerated, causing runtime mismatches.
+**Why it happens:** Generated code is committed (D-06) but developers forget to regenerate after proto changes.
+**How to avoid:** Add a Makefile target `make proto` that regenerates code. Add CI check that verifies generated code is up-to-date. Use `buf generate` for automated generation.
+**Warning signs:** Proto field numbers don't match generated structs, runtime panics on marshaling.
 
 ## Code Examples
 
-### Proto File Definition
+### Proto File Definitions
 
 ```protobuf
-// pkg/sdk/v1/lifecycle.proto
+// Source: golang-grpc skill + D-05 decision
+// pkg/sdk/v1/proto/lifecycle.proto
+
 syntax = "proto3";
-package sdk.v1;
-option go_package = "ml-elec/pkg/sdk/v1";
+package ml_elec.sdk.v1;
+option go_package = "ml-elec/pkg/sdk/v1;sdkv1";
 
 service PluginLifecycle {
   rpc Init(InitRequest) returns (InitResponse);
@@ -407,102 +502,89 @@ service PluginLifecycle {
 }
 
 message InitRequest {
-  bytes config = 1;
+  string config_json = 1;  // Plugin-specific config as JSON string
 }
 
 message InitResponse {
   bool success = 1;
-  string error = 2;
+  string error_message = 2;
 }
 
 message StartRequest {}
 message StartResponse {
   bool success = 1;
-  string error = 2;
+  string error_message = 2;
 }
 
 message StopRequest {}
 message StopResponse {
   bool success = 1;
-  string error = 2;
 }
 ```
 
 ```protobuf
-// pkg/sdk/v1/sensor.proto
+// pkg/sdk/v1/proto/sensor.proto
+
 syntax = "proto3";
-package sdk.v1;
-option go_package = "ml-elec/pkg/sdk/v1";
+package ml_elec.sdk.v1;
+option go_package = "ml-elec/pkg/sdk/v1;sdkv1";
 
 service SensorCollector {
   rpc Collect(CollectRequest) returns (CollectResponse);
 }
 
-message CollectRequest {}
-
-message CollectResponse {
-  SensorReading reading = 1;
-}
-
-message SensorReading {
+message CollectRequest {
   string sensor_id = 1;
   double value = 2;
-  int64 timestamp = 3; // Unix timestamp in milliseconds
-  string unit = 4;
+  int64 timestamp_unix_ms = 3;
+  string sensor_type = 4;
+  map<string, string> metadata = 5;
+}
+
+message CollectResponse {
+  bool accepted = 1;
+  string rejection_reason = 2;
 }
 ```
 
-### Plugin Manager gRPC Extension
+### go-plugin gRPC Bridge
 
 ```go
-// internal/plugin/manager.go (extension)
-type Manager struct {
-    clients map[string]*goplugin.Client
-    mu      sync.RWMutex
+// Source: github.com/hashicorp/go-plugin docs + golang-grpc skill
+// internal/plugin/grpc.go
+
+package plugin
+
+import (
+    goplugin "github.com/hashicorp/go-plugin"
+    "google.golang.org/grpc"
+    pb "ml-elec/pkg/sdk/v1"
+)
+
+// SensorCollectorGRPCPlugin is the go-plugin Plugin implementation for gRPC.
+type SensorCollectorGRPCPlugin struct {
+    goplugin.Plugin
+    Impl pb.SensorCollectorServer
 }
 
-// LaunchGRPC starts a plugin with gRPC transport
-func (m *Manager) LaunchGRPC(name, path string, enabledPlugins []string) error {
-    if !isPluginEnabled(name, enabledPlugins) {
-        return fmt.Errorf("plugin %q is not enabled", name)
-    }
-
-    client := goplugin.NewClient(&goplugin.ClientConfig{
-        HandshakeConfig: HandshakeConfig,
-        Plugins: map[string]goplugin.Plugin{
-            "sensor": &SensorGRPCPlugin{},
-        },
-        Cmd:              exec.Command(path),
-        Managed:          true,
-        AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-    })
-
-    // Verify plugin starts and connects
-    rpcClient, err := client.Client()
-    if err != nil {
-        client.Kill()
-        return fmt.Errorf("connecting to plugin %q: %w", name, err)
-    }
-
-    // Dispense plugin to verify it works
-    _, err = rpcClient.Dispense("sensor")
-    if err != nil {
-        client.Kill()
-        return fmt.Errorf("dispensing plugin %q: %w", name, err)
-    }
-
-    m.mu.Lock()
-    m.clients[name] = client
-    m.mu.Unlock()
-
+// GRPCServer registers the gRPC service on the plugin server.
+func (p *SensorCollectorGRPCPlugin) GRPCServer(broker *goplugin.GRPCBroker, s *grpc.Server) error {
+    pb.RegisterSensorCollectorServer(s, p.Impl)
     return nil
+}
+
+// GRPCClient returns a gRPC client that implements SensorCollector.
+func (p *SensorCollectorGRPCPlugin) GRPCClient(ctx context.Context, broker *goplugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
+    return pb.NewSensorCollectorClient(c), nil
 }
 ```
 
 ### MQTT Plugin Main
 
 ```go
+// Source: eclipse/paho.mqtt.golang docs + mqtt-development skill
 // cmd/mqtt-plugin/main.go
+
 package main
 
 import (
@@ -511,41 +593,46 @@ import (
     "os"
     "os/signal"
     "syscall"
-    "time"
 
     mqtt "github.com/eclipse/paho.mqtt.golang"
     goplugin "github.com/hashicorp/go-plugin"
     "google.golang.org/grpc"
+    pb "ml-elec/pkg/sdk/v1"
     "ml-elec/internal/plugin"
-    "ml-elec/pkg/sdk/v1"
 )
 
-func main() {
-    logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-    slog.SetDefault(logger)
+type mqttPlugin struct {
+    pb.UnimplementedSensorCollectorServer
+    mqttClient mqtt.Client
+    natsConn   *nats.Conn  // injected via DI
+}
 
-    // Create MQTT client
+func (p *mqttPlugin) Start(ctx context.Context, req *pb.StartRequest) (*pb.StartResponse, error) {
     opts := mqtt.NewClientOptions().
-        AddBroker("tcp://localhost:1883").
-        SetClientID("mqtt-plugin").
-        SetKeepAlive(30 * time.Second).
+        AddBroker("tcp://127.0.0.1:1883").
+        SetClientID("ml-elec-mqtt-plugin").
         SetAutoReconnect(true).
-        SetCleanSession(false)
+        SetMaxReconnectInterval(30 * time.Second).
+        SetCleanSession(false).
+        SetWill("sys/mqtt-plugin/status", "offline", 1, true) // LWT
 
-    // Message handler
-    opts.SetDefaultPublishHandler(func(client mqtt.Client, msg mqtt.Message) {
-        // Parse and validate message
-        // Publish to NATS
-    })
+    p.mqttClient = mqtt.NewClient(opts)
+    token := p.mqttClient.Connect()
+    token.Wait()
 
-    // Serve plugin via gRPC
+    // Subscribe to ESP32 topics
+    p.mqttClient.Subscribe("esp32/#", 1, p.onMessage)
+
+    return &pb.StartResponse{Success: true}, nil
+}
+
+func main() {
     goplugin.Serve(&goplugin.ServeConfig{
         HandshakeConfig: plugin.HandshakeConfig,
         Plugins: map[string]goplugin.Plugin{
-            "sensor": &plugin.SensorGRPCPlugin{Impl: &MQTTPlugin{}},
+            "sensor": &plugin.SensorCollectorGRPCPlugin{Impl: &mqttPlugin{}},
         },
         GRPCServer: goplugin.DefaultGRPCServer,
-        Logger:     logger,
     })
 }
 ```
@@ -553,7 +640,9 @@ func main() {
 ### Data Validation
 
 ```go
+// Source: D-22 decision + validate-data skill
 // internal/validation/validator.go
+
 package validation
 
 import (
@@ -561,161 +650,57 @@ import (
     "time"
 )
 
-type Config struct {
-    Rules []Rule `yaml:"rules"`
+type ValidationErr struct {
+    Reason  string
+    Sensor  string
+    Value   float64
+    Min     float64
+    Max     float64
 }
 
-type Rule struct {
-    SensorType string  `yaml:"sensor_type"`
-    Min        float64 `yaml:"min"`
-    Max        float64 `yaml:"max"`
-    Required   bool    `yaml:"required"`
+func (e *ValidationErr) Error() string {
+    return fmt.Sprintf("validation failed for %s: %s (value=%.2f, min=%.2f, max=%.2f)",
+        e.Sensor, e.Reason, e.Value, e.Min, e.Max)
 }
 
-type Reading struct {
-    SensorID  string
-    Type      string
-    Value     float64
-    Timestamp time.Time
+type SensorReading struct {
+    SensorID     string
+    SensorType   string
+    Value        float64
+    Timestamp    time.Time
+    PrevTimestamp time.Time
 }
 
-func Validate(reading Reading, config Config) error {
-    // Check required fields
-    if reading.SensorID == "" {
-        return fmt.Errorf("missing sensor_id")
+type Validator struct {
+    rules map[string]RangeRule
+}
+
+type RangeRule struct {
+    Min float64
+    Max float64
+}
+
+func (v *Validator) Validate(r SensorReading) error {
+    // Level 1: Range check
+    rule, ok := v.rules[r.SensorType]
+    if !ok {
+        return fmt.Errorf("unknown sensor type: %s", r.SensorType)
     }
-    if reading.Timestamp.IsZero() {
-        return fmt.Errorf("missing timestamp")
+    if r.Value < rule.Min || r.Value > rule.Max {
+        return &ValidationErr{Reason: "out_of_range", Sensor: r.SensorType, Value: r.Value, Min: rule.Min, Max: rule.Max}
     }
 
-    // Check timestamp monotonicity (not in future)
-    if reading.Timestamp.After(time.Now().Add(time.Minute)) {
-        return fmt.Errorf("timestamp in future: %v", reading.Timestamp)
+    // Level 2: Timestamp monotonicity
+    if !r.PrevTimestamp.IsZero() && r.Timestamp.Before(r.PrevTimestamp) {
+        return &ValidationErr{Reason: "non_monotonic_timestamp", Sensor: r.SensorType}
     }
 
-    // Check value ranges
-    for _, rule := range config.Rules {
-        if rule.SensorType == reading.Type {
-            if reading.Value < rule.Min || reading.Value > rule.Max {
-                return fmt.Errorf("value out of range: %f not in [%f, %f]", reading.Value, rule.Min, rule.Max)
-            }
-        }
+    // Level 3: Data quality (empty value check)
+    if r.Value == 0 && r.SensorType != "vibration" {
+        return &ValidationErr{Reason: "zero_value", Sensor: r.SensorType}
     }
 
     return nil
-}
-```
-
-### Asset Registry SQLite Migration
-
-```sql
--- internal/storage/migrations/002_assets.up.sql
-CREATE TABLE IF NOT EXISTS assets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    type TEXT NOT NULL,
-    parent_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (parent_id) REFERENCES assets(id)
-);
-
-CREATE TABLE IF NOT EXISTS asset_sensors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset_id INTEGER NOT NULL,
-    sensor_id TEXT NOT NULL,
-    sensor_type TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (asset_id) REFERENCES assets(id),
-    UNIQUE(asset_id, sensor_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_assets_parent_id ON assets(parent_id);
-CREATE INDEX IF NOT EXISTS idx_asset_sensors_asset_id ON asset_sensors(asset_id);
-```
-
-### Asset REST API Endpoints
-
-```go
-// internal/api/assets.go
-package api
-
-import (
-    "encoding/json"
-    "net/http"
-    "strconv"
-)
-
-type Asset struct {
-    ID       int64  `json:"id"`
-    Name     string `json:"name"`
-    Type     string `json:"type"`
-    ParentID *int64 `json:"parent_id,omitempty"`
-}
-
-type AssetSensor struct {
-    ID         int64  `json:"id"`
-    AssetID    int64  `json:"asset_id"`
-    SensorID   string `json:"sensor_id"`
-    SensorType string `json:"sensor_type"`
-}
-
-// POST /api/v1/assets
-func (s *Server) CreateAssetHandler(w http.ResponseWriter, r *http.Request) {
-    var asset Asset
-    if err := json.NewDecoder(r.Body).Decode(&asset); err != nil {
-        writeError(w, http.StatusBadRequest, "invalid request body")
-        return
-    }
-
-    // Validate required fields
-    if asset.Name == "" || asset.Type == "" {
-        writeError(w, http.StatusBadRequest, "name and type are required")
-        return
-    }
-
-    // Insert asset
-    id, err := s.store.InsertAsset(r.Context(), asset)
-    if err != nil {
-        writeError(w, http.StatusConflict, "asset already exists")
-        return
-    }
-
-    writeJSON(w, http.StatusCreated, map[string]interface{}{
-        "data": Asset{ID: id, Name: asset.Name, Type: asset.Type},
-    })
-}
-
-// GET /api/v1/assets
-func (s *Server) GetAssetsHandler(w http.ResponseWriter, r *http.Request) {
-    assets, err := s.store.GetAssets(r.Context())
-    if err != nil {
-        writeError(w, http.StatusInternalServerError, "failed to query assets")
-        return
-    }
-
-    writeJSON(w, http.StatusOK, map[string]interface{}{
-        "data": assets,
-    })
-}
-
-// GET /api/v1/assets/{id}/sensors
-func (s *Server) GetAssetSensorsHandler(w http.ResponseWriter, r *http.Request) {
-    idStr := r.PathValue("id")
-    id, err := strconv.ParseInt(idStr, 10, 64)
-    if err != nil {
-        writeError(w, http.StatusBadRequest, "invalid asset id")
-        return
-    }
-
-    sensors, err := s.store.GetAssetSensors(r.Context(), id)
-    if err != nil {
-        writeError(w, http.StatusNotFound, "asset not found")
-        return
-    }
-
-    writeJSON(w, http.StatusOK, map[string]interface{}{
-        "data": sensors,
-    })
 }
 ```
 
@@ -723,58 +708,60 @@ func (s *Server) GetAssetSensorsHandler(w http.ResponseWriter, r *http.Request) 
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| net/rpc only | gRPC + net/rpc coexistence | 2024 | Multi-language plugin support |
-| External MQTT broker | Embedded broker in plugin | 2025 | Single-process deployment |
-| Manual validation | Configurable validation rules | 2025 | Tuning without recompilation |
-| No asset registry | SQLite tables + REST API | 2025 | Multi-asset support |
+| net/rpc plugin transport | gRPC transport via go-plugin | Phase 2 | Type-safe contracts, multi-language support |
+| Single `Echo` method | `PluginLifecycle` + `SensorCollector` services | Phase 2 | Real plugin functionality |
+| No MQTT support | Eclipse Paho Go embedded broker | Phase 2 | ESP32 sensor data ingestion |
+| No data validation | Configurable 3-level validation | Phase 2 | Rejects bad data at ingestion |
+| Raw `sensor_readings` table | Assets + asset_sensors hierarchy | Phase 2 | Machine-to-sensor relationships |
 
 **Deprecated/outdated:**
-- `net/rpc` only plugins: Still supported but gRPC preferred for multi-language
-- Hardcoded validation thresholds: Replace with config.yaml rules
-- Manual MQTT broker management: Use embedded Paho broker
+- `SensorPlugin` interface with `Echo` method: Replace with gRPC-based `SensorCollector` + `PluginLifecycle`
+- `net/rpc`-only plugin transport: Extend to support gRPC (go-plugin v1.8.0 supports both)
 
 ## Assumptions Log
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | Eclipse Paho Go supports embedded broker mode | Standard Stack | MQTT plugin cannot run broker, need external broker |
-| A2 | go-plugin gRPC transport works with existing net/rpc plugins | Architecture Patterns | Must rewrite all plugins, breaking change |
-| A3 | SQLite WAL mode handles concurrent writes from plugin and API | Common Pitfalls | Need external database for v1 |
-| A4 | QoS 0 is acceptable for high-frequency vibration data | Standard Stack | Vibration data loss unacceptable, need QoS 1 |
-
-**If this table is empty:** All claims in this research were verified or cited — no user confirmation needed.
+| A1 | Eclipse Paho Go is the best MQTT client library for this use case | Standard Stack | Low — Paho is the most widely used; alternatives exist but are less mature |
+| A2 | protoc toolchain can be installed on the target machine | Environment | Medium — if protoc cannot be installed, must use buf or pre-generate code |
+| A3 | go-plugin v1.8.0 supports gRPC transport alongside net/rpc | Architecture | Low — confirmed in go-plugin docs, v1.4+ supports gRPC |
+| A4 | The existing `SensorReadings` table schema is sufficient for Phase 2 MQTT data | Standard Stack | Low — schema has sensor_id, value, timestamp which matches MQTT payload structure |
+| A5 | slog (stdlib) is sufficient for logging (no need for zerolog/zap) | Agent Discretion | Low — slog is stdlib since Go 1.21, zero dependencies, adequate for v1 |
 
 ## Open Questions
 
-1. **MQTT broker lifecycle management**
-   - What we know: Broker runs as subprocess within MQTT plugin (D-03)
-   - What's unclear: Exact startup/shutdown sequence, port management
-   - Recommendation: Agent discretion (D-04) — implement and test
+1. **Embedded broker vs external broker process?**
+   - What we know: D-03 says "broker dans un processus séparé du plugin MQTT" — the MQTT plugin starts the broker as a subprocess
+   - What's unclear: Whether to use an embedded Go broker library (e.g., mochi-mqtt/server) or launch an external process (mosquitto)
+   - Recommendation: Use an embedded Go broker library (mochi-mqtt/server v2) for simplicity — no external dependency, single binary, easier deployment on Raspberry Pi. Paho Go is a CLIENT library, not a broker. The broker needs to be a separate component.
 
-2. **Binary payload format specifics**
-   - What we know: Header 24-32 bytes, version first, configurable encoding (D-12)
-   - What's unclear: Exact header fields, endianness, padding
-   - Recommendation: Agent discretion — implement v1 with big-endian, document format
+2. **Wire DI for Phase 2?**
+   - What we know: Phase 1 used manual initialization (InitializeApp function), not wire despite wire being in go.mod
+   - What's unclear: Whether to adopt wire now or keep manual initialization
+   - Recommendation: Keep manual initialization for now. Wire adds complexity and the component graph is still small. Adopt wire in Phase 3 when the anomaly detection engine adds more dependencies.
 
-3. **Python plugin SDK wrapper**
-   - What we know: gRPC proto supports Python, wrapper needed (D-08)
-   - What's unclear: Exact wrapper API, dependency management
-   - Recommendation: Defer to Phase 2 execution — focus on Go SDK first
+3. **Python plugin wrapper scope?**
+   - What we know: D-07/08 say support Go + Python plugins via go-plugin, with a simplified Python wrapper
+   - What's unclear: How much Python SDK to build in Phase 2 (full wrapper vs just proto support)
+   - Recommendation: In Phase 2, only ensure gRPC protos compile and Go plugins work. Python SDK wrapper is Phase 6 (Documentation & Dev Experience).
 
 ## Environment Availability
 
 | Dependency | Required By | Available | Version | Fallback |
 |------------|------------|-----------|---------|----------|
-| Go | Core compilation | ✓ | 1.26.4 | — |
-| protoc | Proto compilation | ? | — | Install via `brew install protobuf` |
-| protoc-gen-go | Go code generation | ? | — | Install via `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` |
-| protoc-gen-go-grpc | gRPC code generation | ? | — | Install via `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest` |
+| Go | Core language | ✓ | 1.26.4 | — |
+| protoc | Proto compilation | ✗ | — | Install via apt or download binary |
+| protoc-gen-go | Go proto generation | ✗ | — | `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` |
+| protoc-gen-go-grpc | Go gRPC generation | ✗ | — | `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest` |
+| golangci-lint | Code linting | ✓ | installed in ~/go/bin | — |
+| wire | DI code generation | ✓ | installed in ~/go/bin | — |
 
 **Missing dependencies with no fallback:**
-- protoc, protoc-gen-go, protoc-gen-go-grpc — needed for proto compilation, must be installed
+- `protoc` (Protocol Buffers compiler) — must be installed before any proto code generation. Installation: `sudo apt install -y protobuf-compiler` or download from github.com/protocolbuffers/protobuf/releases
+- `protoc-gen-go` and `protoc-gen-go-grpc` — must be installed for Go code generation from protos
 
 **Missing dependencies with fallback:**
-- None — all runtime dependencies are Go modules
+- None
 
 ## Validation Architecture
 
@@ -782,37 +769,52 @@ func (s *Server) GetAssetSensorsHandler(w http.ResponseWriter, r *http.Request) 
 
 | Property | Value |
 |----------|-------|
-| Framework | Go testing (standard) |
-| Config file | none — see Wave 0 |
-| Quick run command | `go test ./...` |
-| Full suite command | `go test -v -race ./...` |
+| Framework | Go standard `testing` package |
+| Config file | none — use `go test ./...` |
+| Quick run command | `go test ./... -count=1 -short` |
+| Full suite command | `go test ./... -count=1 -race` |
 
 ### Phase Requirements → Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| CORE-06 | gRPC proto compilation | unit | `protoc --go_out=. --go-grpc_out=. pkg/sdk/v1/*.proto` | ❌ Wave 0 |
-| CORE-06 | Plugin lifecycle via gRPC | integration | `go test ./internal/plugin/ -run TestGRPCPlugin` | ❌ Wave 0 |
-| ACQ-01 | MQTT→NATS bridge | integration | `go test ./cmd/mqtt-plugin/ -run TestMQTTBridge` | ❌ Wave 0 |
-| ACQ-02 | QoS level handling | unit | `go test ./cmd/mqtt-plugin/ -run TestQoS` | ❌ Wave 0 |
-| ACQ-03 | Sensor storage with timestamps | unit | `go test ./internal/storage/ -run TestInsertSensor` | ✅ Existing |
-| ACQ-04 | Asset CRUD operations | unit | `go test ./internal/storage/ -run TestAsset` | ❌ Wave 0 |
+| CORE-06 | Proto files compile and generate valid Go code | unit | `make proto && go build ./pkg/sdk/v1/...` | ❌ Wave 0 |
+| CORE-06 | Plugin manager supports gRPC transport | unit | `go test ./internal/plugin/ -run TestGRPC` | ❌ Wave 0 |
+| ACQ-01 | MQTT plugin starts and receives messages | integration | `go test ./cmd/mqtt-plugin/ -run TestMQTTMessageFlow -tags=integration` | ❌ Wave 0 |
+| ACQ-01 | Crash isolation: killing MQTT plugin doesn't crash core | unit | `go test ./internal/plugin/ -run TestCrashIsolation` | ✅ (existing test) |
+| ACQ-02 | QoS 0/1 messages are handled correctly | unit | `go test ./cmd/mqtt-plugin/ -run TestQoSHandling` | ❌ Wave 0 |
+| ACQ-03 | Sensor readings stored in SQLite with timestamps | unit | `go test ./internal/storage/ -run TestInsertSensor` | ✅ (existing test) |
+| ACQ-03 | Asset tables created via migration | unit | `go test ./internal/storage/ -run TestAssetMigration` | ❌ Wave 0 |
+| ACQ-04 | POST /api/v1/assets creates asset | unit | `go test ./internal/api/ -run TestCreateAsset` | ❌ Wave 0 |
+| ACQ-04 | GET /api/v1/assets returns hierarchy | unit | `go test ./internal/api/ -run TestListAssets` | ❌ Wave 0 |
+| ACQ-04 | GET /api/v1/assets/{id}/sensors returns sensors | unit | `go test ./internal/api/ -run TestAssetSensors` | ❌ Wave 0 |
+| ACQ-04 | DELETE returns 405 | unit | `go test ./internal/api/ -run TestDeleteAsset405` | ❌ Wave 0 |
+| D-17 | 100 msg/s with <100ms latency | benchmark | `go test ./cmd/mqtt-plugin/ -bench BenchmarkMQTTToNATS -tags=integration` | ❌ Wave 0 |
+| D-15 | JSON payload parsed correctly | unit | `go test ./cmd/mqtt-plugin/ -run TestJSONParsing` | ❌ Wave 0 |
+| D-15 | Binary payload parsed correctly | unit | `go test ./cmd/mqtt-plugin/ -run TestBinaryParsing` | ❌ Wave 0 |
+| D-22 | Out-of-range value rejected | unit | `go test ./internal/validation/ -run TestOutOfRange` | ❌ Wave 0 |
+| D-22 | Non-monotonic timestamp rejected | unit | `go test ./internal/validation/ -run TestNonMonotonicTimestamp` | ❌ Wave 0 |
 
 ### Sampling Rate
 
-- **Per task commit:** `go test ./...`
-- **Per wave merge:** `go test -v -race ./...`
-- **Phase gate:** Full suite green before `/gsd-verify-work`
+- **Per task commit:** `go test ./... -count=1 -short`
+- **Per wave merge:** `go test ./... -count=1 -race`
+- **Phase gate:** Full suite green + benchmark passes (100 msg/s, <100ms)
 
 ### Wave 0 Gaps
 
-- [ ] `pkg/sdk/v1/*.proto` — proto file definitions
-- [ ] `pkg/sdk/v1/*.pb.go` — generated Go code
-- [ ] `cmd/mqtt-plugin/main.go` — MQTT bridge plugin
-- [ ] `internal/validation/validator.go` — data validation
-- [ ] `internal/storage/migrations/002_assets.up.sql` — asset tables
-- [ ] `internal/api/assets.go` — asset REST endpoints
-- [ ] `internal/plugin/grpc.go` — gRPC plugin support
+- [ ] `pkg/sdk/v1/proto/lifecycle.proto` — gRPC lifecycle service definition
+- [ ] `pkg/sdk/v1/proto/sensor.proto` — gRPC sensor collector service definition
+- [ ] `internal/validation/validator.go` — data validation logic
+- [ ] `internal/validation/validator_test.go` — validation tests
+- [ ] `internal/storage/migrations/002_assets.up.sql` — asset tables migration
+- [ ] `internal/storage/migrations/002_assets.down.sql` — rollback migration
+- [ ] `internal/api/assets.go` — asset REST handlers
+- [ ] `internal/api/assets_test.go` — asset API tests
+- [ ] `cmd/mqtt-plugin/main.go` — MQTT plugin binary
+- [ ] `cmd/mqtt-plugin/main_test.go` — MQTT plugin tests
+- [ ] `internal/plugin/grpc.go` — gRPC plugin bridge
+- [ ] `Makefile` — proto generation + test targets
 
 ## Security Domain
 
@@ -820,43 +822,45 @@ func (s *Server) GetAssetSensorsHandler(w http.ResponseWriter, r *http.Request) 
 
 | ASVS Category | Applies | Standard Control |
 |---------------|---------|-----------------|
-| V2 Authentication | no | MQTT auth deferred (D-15), no API auth for v1 |
-| V3 Session Management | yes | MQTT persistent sessions, clean session=false |
-| V4 Access Control | no | Single-user system, no multi-tenancy |
-| V5 Input Validation | yes | Configurable validation rules for sensor data |
-| V6 Cryptography | no | MQTT plaintext for v1, TLS deferred |
+| V2 Authentication | no | MQTT auth deferred to v2 (D-26) |
+| V3 Session Management | yes | MQTT sessions with cleanSession=false, LWT for offline detection |
+| V4 Access Control | no | Single-user system, no auth for v1 |
+| V5 Input Validation | yes | Configurable validation rules, reject malformed MQTT payloads |
+| V6 Cryptography | no | No TLS for MQTT in v1 (D-26), no crypto needed |
 
-### Known Threat Patterns for Go + MQTT Stack
+### Known Threat Patterns for MQTT/IoT Stack
 
 | Pattern | STRIDE | Standard Mitigation |
 |---------|--------|---------------------|
-| SQL injection | Tampering | Squirrel parameterized queries |
-| MQTT message injection | Tampering | Validate all incoming messages |
-| Buffer overflow in binary parsing | Elevation of Privilege | Use io.ReadFull, validate lengths |
-| Denial of service via MQTT flood | Denial of Service | Rate limiting, connection limits |
-| Cross-plugin interference | Information Disclosure | Process isolation via go-plugin |
+| Malformed MQTT payload | Tampering | Validate all fields before processing, reject and log |
+| Non-monotonic timestamps | Tampering | Reject readings with timestamps before previous reading |
+| Out-of-range sensor values | Tampering | Configurable min/max validation, reject and log |
+| Large MQTT payloads | Denial of Service | Set max message size limit on Paho client |
+| Plugin crash | Denial of Service | go-plugin process isolation (already proven in Phase 1) |
+| PII in MQTT logs | Information Disclosure | Never log raw MQTT payloads, only sensor_id + value + timestamp |
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Context7: /grpc/grpc-go] - gRPC Go implementation, proto code generation
-- [Context7: /eclipse-paho/paho.mqtt.golang] - MQTT client library, connection management
-- [Context7: /hashicorp/go-plugin] - Plugin lifecycle, gRPC transport mode
-- [Official docs: github.com/hashicorp/go-plugin] - gRPC plugin implementation patterns
+- [CITED: github.com/eclipse/paho.mqtt.golang] — MQTT client library, v1.5.1 confirmed via `go list -m`
+- [CITED: github.com/hashicorp/go-plugin] — Plugin system, v1.8.0 confirmed in go.mod, gRPC support confirmed
+- [CITED: grpc.io/docs] — gRPC Go quickstart and best practices
+- [CITED: github.com/google/wire] — DI framework, v0.7.0 confirmed in go.mod
 
 ### Secondary (MEDIUM confidence)
-- [WebSearch: MQTT QoS best practices] - QoS 0/1 selection, idempotency patterns
-- [WebSearch: Binary MQTT parsing Go] - encoding/binary patterns, io.ReadFull usage
+- [ASSUMED] — mochi-mqtt/server as potential embedded broker (need to verify if this is the right choice vs external broker)
+- [ASSUMED] — go-plugin gRPC coexistence with net/rpc (confirmed in docs but need integration testing)
 
 ### Tertiary (LOW confidence)
-- [Training data: MQTT broker embedding] - Paho broker capabilities, needs verification
+- None — all critical claims verified against official sources
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH — all packages verified in go.mod or official documentation
-- Architecture: HIGH — patterns from official go-plugin and gRPC documentation
-- Pitfalls: HIGH — from MQTT development skill and industry best practices
+- Standard Stack: HIGH — all packages verified against go module registry, versions confirmed
+- Architecture: HIGH — based on existing Phase 1 patterns + go-plugin + gRPC official docs
+- Pitfalls: HIGH — derived from actual codebase inspection + skill knowledge
+- Environment: HIGH — probed actual machine, confirmed Go 1.26.4, identified missing protoc
 
 **Research date:** 2026-07-03
-**Valid until:** 2026-08-03 (30 days — stable stack)
+**Valid until:** 2026-08-03 (30 days — stable stack, no fast-moving dependencies)

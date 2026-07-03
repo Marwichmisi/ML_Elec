@@ -48,7 +48,7 @@ Plans:
   4. QoS levels (0/1/2) are configurable per topic and correctly handled
   5. Sensor readings are persisted to SQLite with correct timestamps
   6. Asset registry supports registering machines with sensor hierarchy
-**Plans:** 5 plans
+**Plans:** 6 plans
 
 Plans:
 - [x] 02-01-PLAN.md — gRPC Plugin SDK (proto files, generated code, Go interfaces)
@@ -56,6 +56,7 @@ Plans:
 - [x] 02-03-PLAN.md — MQTT plugin with embedded broker, validation, NATS bridge
 - [x] 02-04-PLAN.md — Asset REST API endpoints with pagination
 - [x] 02-05-PLAN.md — Integration tests, crash isolation, performance benchmarks
+- [ ] 02-06-PLAN.md — Gap closure: NATS publishing, validation, storage, QoS, backoff
 
 ### Phase 3: Anomaly Detection Engine
 **Goal**: System automatically detects anomalous sensor readings using configurable thresholds and ML models, scoring each alert with a confidence level

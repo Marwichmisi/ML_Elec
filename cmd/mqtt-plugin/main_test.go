@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -10,7 +9,7 @@ import (
 
 // TestStartBroker verifies the embedded broker starts on a configurable port.
 func TestStartBroker(t *testing.T) {
-	broker, err := StartBroker(0) // port 0 = auto-assign
+	broker, err := StartBroker(0)
 	if err != nil {
 		t.Fatalf("StartBroker failed: %v", err)
 	}
@@ -28,7 +27,12 @@ func TestMQTTClientConnects(t *testing.T) {
 	}
 	defer broker.Close()
 
-	client, err := ConnectClient(broker, "test-client")
+	addr, err := BrokerAddr(broker)
+	if err != nil {
+		t.Fatalf("BrokerAddr failed: %v", err)
+	}
+
+	client, err := ConnectClient(addr, "test-client")
 	if err != nil {
 		t.Fatalf("ConnectClient failed: %v", err)
 	}
@@ -50,7 +54,12 @@ func TestSubscribeAndReceive(t *testing.T) {
 	}
 	defer broker.Close()
 
-	client, err := ConnectClient(broker, "test-subscriber")
+	addr, err := BrokerAddr(broker)
+	if err != nil {
+		t.Fatalf("BrokerAddr failed: %v", err)
+	}
+
+	client, err := ConnectClient(addr, "test-subscriber")
 	if err != nil {
 		t.Fatalf("ConnectClient failed: %v", err)
 	}
@@ -127,7 +136,7 @@ func TestBinaryParsing(t *testing.T) {
 	header[3] = 0  // reserved
 
 	binary.BigEndian.PutUint64(header[4:12], uint64(1719900000000000000))
-	binary.BigEndian.PutUint32(header[12:16], 2) // sample_count
+	binary.BigEndian.PutUint32(header[12:16], 2)    // sample_count
 	binary.BigEndian.PutUint32(header[16:20], 1000) // sample_rate
 
 	samples := make([]byte, 4)
@@ -186,15 +195,16 @@ func TestBinaryParsingWrongVersion(t *testing.T) {
 	}
 }
 
-// TestBinaryParsingLittleEndian verifies little-endian data is rejected.
+// TestBinaryParsingLittleEndian verifies little-endian data is rejected (big-endian only).
 func TestBinaryParsingLittleEndian(t *testing.T) {
 	header := make([]byte, 28)
 	header[0] = 1
 	header[1] = 1
 
-	// Write in little-endian (wrong!)
+	// Write timestamp in little-endian (wrong!)
 	binary.LittleEndian.PutUint64(header[4:12], uint64(1719900000000000000))
-	binary.LittleEndian.PutUint32(header[12:16], 2)
+	// Use 0 samples so parsing doesn't fail on sample data length
+	binary.LittleEndian.PutUint32(header[12:16], 0)
 	binary.LittleEndian.PutUint32(header[16:20], 1000)
 
 	result, err := ParseBinaryPayload(header)
@@ -313,7 +323,12 @@ func TestQoSHandling(t *testing.T) {
 	}
 	defer broker.Close()
 
-	client, err := ConnectClient(broker, "test-qos")
+	addr, err := BrokerAddr(broker)
+	if err != nil {
+		t.Fatalf("BrokerAddr failed: %v", err)
+	}
+
+	client, err := ConnectClient(addr, "test-qos")
 	if err != nil {
 		t.Fatalf("ConnectClient failed: %v", err)
 	}

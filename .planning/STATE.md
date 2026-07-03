@@ -2,18 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 01
-status: "Phase 01 shipped — PR #1"
-stopped_at: Phase 01 context gathered
-last_updated: "2026-07-02T20:53:31.065Z"
-last_activity: 2026-07-02
+current_phase: 3
+current_phase_name: Anomaly Detection Engine
+status: completed
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-07-03T13:43:19.120Z"
+last_activity: 2026-07-03
+last_activity_desc: Phase 02 shipped — PR #2
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 14
-current_phase_name: core-foundation
+  completed_phases: 2
+  total_plans: 11
+  completed_plans: 12
+  percent: 29
 ---
 
 # Project State
@@ -23,41 +24,42 @@ current_phase_name: core-foundation
 See: .planning/PROJECT.md (updated 2026-06-30)
 
 **Core value:** Sensor data collection + reliable anomaly detection — the foundation everything else builds on
-**Current focus:** Phase 01 — core-foundation
+**Current focus:** Phase 03 — anomaly-detection-engine
 
 ## Current Position
 
-Phase: 01 — COMPLETE
-Plan: 1 of 5
-Status: Phase 01 shipped — PR #1
-Last activity: 2026-07-02
+Phase: 3 — Anomaly Detection Engine
+Plan: Not started
+Status: Phase 02 shipped — PR #2
+Last activity: 2026-07-03 — Phase 02 shipped — PR #2
 
-Progress: ░░░░░░░░░░ 0%
+Progress: ██████████ 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 7
+- Average duration: 15 min
+- Total execution time: 1.8 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Core Foundation | 0/5 | - | - |
-| 2. Plugin SDK & MQTT Bridge | 0/5 | - | - |
+| 1. Core Foundation | 5/5 | 85 min | 17 min |
+| 2. Plugin SDK & MQTT Bridge | 6/6 | 90 min | 15 min |
 | 3. Anomaly Detection Engine | 0/4 | - | - |
 | 4. Real-time & Historical Dashboard | 0/3 | - | - |
 | 5. Dashboard Configuration | 0/2 | - | - |
 | 6. Documentation & Dev Experience | 0/2 | - | - |
 | 7. Demo & Multi-Asset Validation | 0/2 | - | - |
+| 02 | 7 | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 16 min
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -74,6 +76,9 @@ Recent decisions affecting current work:
 - [Init]: React 19 + Vite + shadcn/ui for dashboard
 - [Roadmap]: 7 phases derived from 24 requirements (fine granularity)
 - [Roadmap]: Core split into Infrastructure (6 req) + SDK (1 req) to prevent core bloat
+- [02-01]: One proto file per service (D-05), generated code committed (D-06)
+- [02-01]: Versioned SDK at pkg/sdk/v1/ (D-09) for future v2 compatibility
+- [02-05]: Mock plugin ServeConfig must set GRPCServer callback for go-plugin gRPC protocol negotiation
 
 ### Pending Todos
 
@@ -93,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-30T20:19:43.339Z
-Stopped at: Phase 01 context gathered
-Resume file: .planning/phases/01-core-foundation/01-CONTEXT.md
+Last session: 2026-07-03T09:20:00Z
+Stopped at: Completed 02-06-PLAN.md
+Resume file: None

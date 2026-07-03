@@ -15,3 +15,37 @@ plugins:
   enabled: []
   # - mqtt-sensor
   # - modbus-gateway
+
+# MQTT broker and client configuration
+mqtt:
+  port: 1883
+  client_id: "mqtt-plugin"
+  clean_session: false
+  keep_alive: 30
+  topics:
+    subscribe: "esp32/#"
+    status: "sys/mqtt-plugin/status"
+
+# Data validation configuration (3-level validation)
+validation:
+  ranges:
+    temperature:
+      min: -40.0
+      max: 150.0
+    humidity:
+      min: 0.0
+      max: 100.0
+    current:
+      min: 0.0
+      max: 1000.0
+  timestamp:
+    max_future_drift: "5s"
+    max_past_drift: "24h"
+  health:
+    max_payload_size: 1024
+    min_payload_size: 1
+
+# Asset registry configuration
+assets:
+  auto_register: true
+  default_site: "factory-1"

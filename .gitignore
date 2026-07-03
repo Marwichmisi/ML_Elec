@@ -44,3 +44,6 @@ tmp/
 data/
 mock-plugin-test-binary
 mock-plugin
+
+# Compiled binary
+ml-elec

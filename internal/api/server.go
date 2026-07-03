@@ -35,7 +35,13 @@ func NewServer(cfg *config.APIConfig, store *storage.Store) *Server {
 
 	// Register routes
 	mux.HandleFunc("GET /health", s.HealthHandler)
-	mux.HandleFunc("GET /api/v1/sensors", s.GetSensorsHandler)
+	mux.HandleFunc("GET /api/v1/sensors", s.SensorsHandler)
+	mux.HandleFunc("POST /api/v1/assets", s.CreateAssetHandler)
+	mux.HandleFunc("GET /api/v1/assets", s.ListAssetsHandler)
+	mux.HandleFunc("GET /api/v1/assets/{id}", s.GetAssetHandler)
+	mux.HandleFunc("GET /api/v1/assets/{id}/sensors", s.ListAssetSensorsHandler)
+	mux.HandleFunc("POST /api/v1/assets/{id}/sensors", s.CreateAssetSensorHandler)
+	mux.HandleFunc("DELETE /api/v1/assets", s.DeleteAssetsHandler)
 
 	// Apply CORS middleware
 	c := cors.New(cors.Options{

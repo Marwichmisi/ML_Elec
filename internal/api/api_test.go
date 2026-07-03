@@ -82,23 +82,27 @@ func TestGetSensorsNoSensorID(t *testing.T) {
 	ts := httptest.NewServer(srv.server.Handler)
 	defer ts.Close()
 
+	// Without sensor_id, returns all sensors with pagination (new behavior)
 	resp, err := http.Get(ts.URL + "/api/v1/sensors")
 	if err != nil {
 		t.Fatalf("GET /api/v1/sensors failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected status 400, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	var errResp ErrorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-		t.Fatalf("failed to decode error response: %v", err)
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if errResp.Error == "" {
-		t.Error("expected non-empty error message")
+	if _, ok := result["data"]; !ok {
+		t.Error("expected \"data\" key in response")
+	}
+	if _, ok := result["pagination"]; !ok {
+		t.Error("expected \"pagination\" key in response")
 	}
 }
 
@@ -269,10 +273,10 @@ func TestJSONResponseFormat(t *testing.T) {
 	ts := httptest.NewServer(srv.server.Handler)
 	defer ts.Close()
 
-	// Test error response format
-	resp, err := http.Get(ts.URL + "/api/v1/sensors")
+	// Test error response format (non-existent asset → 404)
+	resp, err := http.Get(ts.URL + "/api/v1/assets/99999")
 	if err != nil {
-		t.Fatalf("GET /api/v1/sensors failed: %v", err)
+		t.Fatalf("GET /api/v1/assets/99999 failed: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -286,7 +290,7 @@ func TestJSONResponseFormat(t *testing.T) {
 		t.Error("expected \"error\" key in error response")
 	}
 
-	// Test success response format
+	// Test success response format (sensor readings)
 	resp2, err := http.Get(ts.URL + "/api/v1/sensors?sensor_id=test")
 	if err != nil {
 		t.Fatalf("GET /api/v1/sensors failed: %v", err)

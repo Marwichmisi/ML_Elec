@@ -1,18 +1,31 @@
 package main
 
 import (
+	"context"
+
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-hclog"
+	"google.golang.org/grpc"
 
 	"ml-elec/internal/plugin"
+	sdk "ml-elec/pkg/sdk/v1"
 )
 
-// MockSensorPlugin is a mock implementation of the SensorPlugin interface.
+// MockSensorPlugin implements both PluginLifecycle and SensorCollector.
 type MockSensorPlugin struct{}
 
-// Echo returns the message back.
-func (p *MockSensorPlugin) Echo(msg string) (string, error) {
-	return msg, nil
+// Init initializes the mock plugin (no-op).
+func (p *MockSensorPlugin) Init(_ context.Context, _ map[string]string) error { return nil }
+
+// Start starts the mock plugin (no-op).
+func (p *MockSensorPlugin) Start(_ context.Context) error { return nil }
+
+// Stop stops the mock plugin (no-op).
+func (p *MockSensorPlugin) Stop(_ context.Context) error { return nil }
+
+// Collect handles a sensor collection request (always accepts).
+func (p *MockSensorPlugin) Collect(_ context.Context, _ *sdk.CollectRequest) (*sdk.CollectResponse, error) {
+	return &sdk.CollectResponse{Accepted: true}, nil
 }
 
 func main() {
@@ -25,7 +38,13 @@ func main() {
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: plugin.HandshakeConfig,
 		Plugins: map[string]goplugin.Plugin{
-			"sensor": &plugin.SensorPluginRPC{Impl: &MockSensorPlugin{}},
+			"sensor": &sdk.GRPCPlugin{
+				Impl:        &MockSensorPlugin{},
+				CollectImpl: &MockSensorPlugin{},
+			},
+		},
+		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
+			return grpc.NewServer(opts...)
 		},
 		Logger: logger,
 	})

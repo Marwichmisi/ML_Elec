@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package sdk.v1;
+
+option go_package = "ml-elec/pkg/sdk/v1";
+
+// PluginLifecycle defines the gRPC service for plugin lifecycle management.
+// Plugins implement this service to integrate with the ML-Elec core.
+service PluginLifecycle {
+  // Init initializes the plugin with the provided configuration.
+  rpc Init(InitRequest) returns (InitResponse);
+
+  // Start starts the plugin. Called after successful Init.
+  rpc Start(StartRequest) returns (StartResponse);
+
+  // Stop gracefully stops the plugin.
+  rpc Stop(StopRequest) returns (StopResponse);
+}
+
+// InitRequest contains configuration for plugin initialization.
+message InitRequest {
+  map<string, string> config = 1;
+}
+
+// InitResponse is the response to Init. Extensible for future fields.
+message InitResponse {}
+
+// StartRequest is the request to start the plugin.
+message StartRequest {}
+
+// StartResponse is the response to Start. Extensible for future fields.
+message StartResponse {}
+
+// StopRequest is the request to stop the plugin.
+message StopRequest {}
+
+// StopResponse is the response to Stop. Extensible for future fields.
+message StopResponse {}

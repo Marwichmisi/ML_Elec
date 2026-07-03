@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package sdk.v1;
+
+option go_package = "ml-elec/pkg/sdk/v1";
+
+// SensorCollector defines the gRPC service for collecting sensor data.
+// Plugins implement this service to send sensor readings to the core.
+service SensorCollector {
+  // Collect sends a sensor reading to the core for processing.
+  rpc Collect(CollectRequest) returns (CollectResponse);
+}
+
+// CollectRequest contains sensor data to be collected.
+message CollectRequest {
+  // sensor_id is the unique identifier of the sensor.
+  string sensor_id = 1;
+
+  // topic is the MQTT topic from which the data was received.
+  string topic = 2;
+
+  // payload is the raw sensor data.
+  bytes payload = 3;
+
+  // payload_format indicates the format of the payload ("json" or "binary").
+  string payload_format = 4;
+}
+
+// CollectResponse indicates whether the sensor data was accepted.
+message CollectResponse {
+  // accepted indicates if the data was accepted for processing.
+  bool accepted = 1;
+
+  // rejection_reason contains the reason if the data was rejected.
+  string rejection_reason = 2;
+}

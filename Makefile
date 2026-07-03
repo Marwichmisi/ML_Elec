@@ -1,4 +1,4 @@
-.PHONY: build test test-race wire lint run clean check-loc
+.PHONY: build test test-race wire lint run clean check-loc proto
 
 BINARY_NAME=ml-elec
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -7,6 +7,16 @@ VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 build:
 	@echo "Building $(BINARY_NAME)..."
 	go build -o bin/$(BINARY_NAME) ./cmd/ml-elec
+
+# Generate protobuf Go code
+PROTOC=$(shell which protoc 2>/dev/null || echo ~/go/bin/protoc)
+proto:
+	@echo "Generating protobuf code..."
+	$(PROTOC) --go_out=pkg/sdk/v1 --go_opt=paths=source_relative \
+	       --go-grpc_out=pkg/sdk/v1 --go-grpc_opt=paths=source_relative \
+	       -I pkg/sdk/v1/proto \
+	       pkg/sdk/v1/proto/lifecycle.proto \
+	       pkg/sdk/v1/proto/sensor.proto
 
 # Run all tests
 test:

@@ -5,6 +5,7 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-hclog"
+	"google.golang.org/grpc"
 
 	"ml-elec/internal/plugin"
 	sdk "ml-elec/pkg/sdk/v1"
@@ -41,6 +42,9 @@ func main() {
 				Impl:        &MockSensorPlugin{},
 				CollectImpl: &MockSensorPlugin{},
 			},
+		},
+		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
+			return grpc.NewServer(opts...)
 		},
 		Logger: logger,
 	})

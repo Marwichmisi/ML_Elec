@@ -14,15 +14,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CORE-03**: API REST pour interaction externe (dashboard, configuration)
 - [x] **CORE-04**: Stockage SQLite avec mode WAL pour séries temporelles
 - [x] **CORE-05**: Configuration centralisée (core + plugins activables/désactivables)
-- [ ] **CORE-06**: Plugin SDK avec contrats versionnés
+- [x] **CORE-06**: Plugin SDK avec contrats versionnés
 - [x] **CORE-07**: Contrainte taille core < 5000 LOC (prévention core bloat)
 
 ### Acquisition
 
-- [ ] **ACQ-01**: Plugin acquisition MQTT : collecte données capteurs ESP32 → Core via NATS
-- [ ] **ACQ-02**: Support MQTT QoS 0/1/2 pour fiabilité variable
-- [ ] **ACQ-03**: Stockage données capteurs en SQLite avec timestamps
-- [ ] **ACQ-04**: Gestion des assets/machines (enregistrement, hiérarchie)
+- [x] **ACQ-01**: Plugin acquisition MQTT : collecte données capteurs ESP32 → Core via NATS
+- [x] **ACQ-02**: Support MQTT QoS 0/1/2 pour fiabilité variable
+- [x] **ACQ-03**: Stockage données capteurs en SQLite avec timestamps
+- [x] **ACQ-04**: Gestion des assets/machines (enregistrement, hiérarchie)
 
 ### Détection
 
@@ -99,11 +99,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-04 | Phase 1: Core Foundation | ✓ Complete |
 | CORE-05 | Phase 1: Core Foundation | ✓ Complete |
 | CORE-07 | Phase 1: Core Foundation | ✓ Complete |
-| CORE-06 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
-| ACQ-01 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
-| ACQ-02 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
-| ACQ-03 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
-| ACQ-04 | Phase 2: Plugin SDK & MQTT Bridge | Pending |
+| CORE-06 | Phase 2: Plugin SDK & MQTT Bridge | Complete |
+| ACQ-01 | Phase 2: Plugin SDK & MQTT Bridge | Complete |
+| ACQ-02 | Phase 2: Plugin SDK & MQTT Bridge | Complete |
+| ACQ-03 | Phase 2: Plugin SDK & MQTT Bridge | Complete |
+| ACQ-04 | Phase 2: Plugin SDK & MQTT Bridge | Complete |
 | DET-01 | Phase 3: Anomaly Detection Engine | Pending |
 | DET-02 | Phase 3: Anomaly Detection Engine | Pending |
 | DET-03 | Phase 3: Anomaly Detection Engine | Pending |
@@ -119,6 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEMO-02 | Phase 7: Demo & Multi-Asset Validation | Pending |
 
 **Coverage:**
+
 - v1 requirements: 24 total
 - Mapped to phases: 24
 - Unmapped: 0 ✓
@@ -126,6 +127,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 ## Agent Development Notes
 
 **Compétences obligatoires pour l'agent développeur:**
+
 - **Go skills** : Les skills Go (golang-*) sont obligatoires pour le développement du core. L'agent doit suivre les bonnes pratiques Go (error handling, naming, structs/interfaces, testing, lint) pour produire du code de qualité.
 
 ---

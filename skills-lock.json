@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "SQLite Database Expert": {
+      "source": "martinholovsky/claude-skills-generator",
+      "sourceType": "github",
+      "skillPath": "skills/sqlite/SKILL.md",
+      "computedHash": "0e75baa1c3159dba4c6db79330634327039c9813410256b73357dcbb0ed9d0ea"
+    },
     "golang-benchmark": {
       "source": "samber/cc-skills-golang",
       "sourceType": "github",
@@ -264,6 +270,24 @@
       "sourceType": "github",
       "skillPath": "skills/golang-uber-fx/SKILL.md",
       "computedHash": "ce20545b444a3eef463cd2cd32a57479ab0b4a483eeb7b212b2ae180289d004c"
+    },
+    "mqtt-development": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "mqtt-development/SKILL.md",
+      "computedHash": "59a0b16fbba484cf2939eaaeac25af0f77673b2a0aeecac347b7e41f51b839cd"
+    },
+    "rest-api-design": {
+      "source": "secondsky/claude-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/rest-api-design/skills/rest-api-design/SKILL.md",
+      "computedHash": "60248d72662c4bc3c9ba68f8703b614507181197c52f529e7d5aeb8db3e6523a"
+    },
+    "validate-data": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "data/skills/validate-data/SKILL.md",
+      "computedHash": "352a628a430896ad0b2cbe5f4f28409b0a9db406f947dc545d8610d5ed9ed217"
     }
   }
 }

@@ -140,6 +140,55 @@ func TestDefaultConfig(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "MQTT QoS default",
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.MQTT.QoS != 1 {
+					t.Errorf("MQTT.QoS = %d, want 1", cfg.MQTT.QoS)
+				}
+			},
+		},
+		{
+			name: "MQTT QoSPerTopic default empty",
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.MQTT.QoSPerTopic == nil {
+					t.Error("MQTT.QoSPerTopic should not be nil")
+				}
+				if len(cfg.MQTT.QoSPerTopic) != 0 {
+					t.Errorf("MQTT.QoSPerTopic should be empty, got %v", cfg.MQTT.QoSPerTopic)
+				}
+			},
+		},
+		{
+			name: "MQTT NATSHost default",
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.MQTT.NATSHost != "127.0.0.1" {
+					t.Errorf("MQTT.NATSHost = %q, want %q", cfg.MQTT.NATSHost, "127.0.0.1")
+				}
+			},
+		},
+		{
+			name: "MQTT NATSPort default",
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.MQTT.NATSPort != 4222 {
+					t.Errorf("MQTT.NATSPort = %d, want 4222", cfg.MQTT.NATSPort)
+				}
+			},
+		},
+		{
+			name: "MQTT ReconnectBackoff defaults",
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.MQTT.ReconnectBackoff.InitialInterval != "1s" {
+					t.Errorf("ReconnectBackoff.InitialInterval = %q, want %q", cfg.MQTT.ReconnectBackoff.InitialInterval, "1s")
+				}
+				if cfg.MQTT.ReconnectBackoff.MaxInterval != "30s" {
+					t.Errorf("ReconnectBackoff.MaxInterval = %q, want %q", cfg.MQTT.ReconnectBackoff.MaxInterval, "30s")
+				}
+				if cfg.MQTT.ReconnectBackoff.Multiplier != 2.0 {
+					t.Errorf("ReconnectBackoff.Multiplier = %f, want 2.0", cfg.MQTT.ReconnectBackoff.Multiplier)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -164,6 +213,16 @@ mqtt:
   client_id: "test-client"
   clean_session: true
   keep_alive: 60
+  qos: 0
+  qos_per_topic:
+    esp32/vibration: 0
+    esp32/temperature: 1
+  nats_host: "192.168.1.100"
+  nats_port: 4223
+  reconnect_backoff:
+    initial_interval: "2s"
+    max_interval: "60s"
+    multiplier: 3.0
   topics:
     subscribe: "test/#"
     status: "sys/test/status"
@@ -194,6 +253,30 @@ assets:
 				}
 				if cfg.MQTT.KeepAlive != 60 {
 					t.Errorf("MQTT.KeepAlive = %d, want 60", cfg.MQTT.KeepAlive)
+				}
+				if cfg.MQTT.QoS != 0 {
+					t.Errorf("MQTT.QoS = %d, want 0", cfg.MQTT.QoS)
+				}
+				if cfg.MQTT.QoSPerTopic["esp32/vibration"] != 0 {
+					t.Errorf("QoSPerTopic[esp32/vibration] = %d, want 0", cfg.MQTT.QoSPerTopic["esp32/vibration"])
+				}
+				if cfg.MQTT.QoSPerTopic["esp32/temperature"] != 1 {
+					t.Errorf("QoSPerTopic[esp32/temperature] = %d, want 1", cfg.MQTT.QoSPerTopic["esp32/temperature"])
+				}
+				if cfg.MQTT.NATSHost != "192.168.1.100" {
+					t.Errorf("MQTT.NATSHost = %q, want %q", cfg.MQTT.NATSHost, "192.168.1.100")
+				}
+				if cfg.MQTT.NATSPort != 4223 {
+					t.Errorf("MQTT.NATSPort = %d, want 4223", cfg.MQTT.NATSPort)
+				}
+				if cfg.MQTT.ReconnectBackoff.InitialInterval != "2s" {
+					t.Errorf("ReconnectBackoff.InitialInterval = %q, want %q", cfg.MQTT.ReconnectBackoff.InitialInterval, "2s")
+				}
+				if cfg.MQTT.ReconnectBackoff.MaxInterval != "60s" {
+					t.Errorf("ReconnectBackoff.MaxInterval = %q, want %q", cfg.MQTT.ReconnectBackoff.MaxInterval, "60s")
+				}
+				if cfg.MQTT.ReconnectBackoff.Multiplier != 3.0 {
+					t.Errorf("ReconnectBackoff.Multiplier = %f, want 3.0", cfg.MQTT.ReconnectBackoff.Multiplier)
 				}
 				if cfg.MQTT.Topics.Subscribe != "test/#" {
 					t.Errorf("MQTT.Topics.Subscribe = %q, want %q", cfg.MQTT.Topics.Subscribe, "test/#")

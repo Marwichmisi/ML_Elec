@@ -21,14 +21,26 @@ type Config struct {
 
 // MQTTConfig holds MQTT broker and client configuration.
 type MQTTConfig struct {
-	Port         int    `yaml:"port"`
-	ClientID     string `yaml:"client_id"`
-	CleanSession bool   `yaml:"clean_session"`
-	KeepAlive    int    `yaml:"keep_alive"`
+	Port         int               `yaml:"port"`
+	ClientID     string            `yaml:"client_id"`
+	CleanSession bool              `yaml:"clean_session"`
+	KeepAlive    int               `yaml:"keep_alive"`
+	QoS          byte              `yaml:"qos"`            // Default QoS for subscriptions (0 or 1)
+	QoSPerTopic  map[string]byte   `yaml:"qos_per_topic"` // Per-topic QoS overrides
+	NATSHost     string            `yaml:"nats_host"`     // NATS server host to connect to
+	NATSPort     int               `yaml:"nats_port"`     // NATS server port to connect to
+	ReconnectBackoff ReconnectBackoffConfig `yaml:"reconnect_backoff"`
 	Topics       struct {
 		Subscribe string `yaml:"subscribe"`
 		Status    string `yaml:"status"`
 	} `yaml:"topics"`
+}
+
+// ReconnectBackoffConfig defines exponential backoff parameters for MQTT reconnection.
+type ReconnectBackoffConfig struct {
+	InitialInterval string  `yaml:"initial_interval"` // e.g. "1s"
+	MaxInterval     string  `yaml:"max_interval"`     // e.g. "30s"
+	Multiplier      float64 `yaml:"multiplier"`       // e.g. 2.0
 }
 
 // ValidationConfig holds 3-level data validation configuration.
@@ -104,6 +116,15 @@ func DefaultConfig() *Config {
 			ClientID:     "mqtt-plugin",
 			CleanSession: false,
 			KeepAlive:    30,
+			QoS:          1,
+			QoSPerTopic:  make(map[string]byte),
+			NATSHost:     "127.0.0.1",
+			NATSPort:     4222,
+			ReconnectBackoff: ReconnectBackoffConfig{
+				InitialInterval: "1s",
+				MaxInterval:     "30s",
+				Multiplier:      2.0,
+			},
 			Topics: struct {
 				Subscribe string `yaml:"subscribe"`
 				Status    string `yaml:"status"`

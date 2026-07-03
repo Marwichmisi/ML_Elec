@@ -4,7 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"ml-elec/internal/nats"
 	"ml-elec/internal/plugin"
 	"ml-elec/internal/storage"
+	sdk "ml-elec/pkg/sdk/v1"
 )
 
 // App holds all application components.
@@ -47,6 +50,25 @@ func InitializeApp(cfg *config.Config) (*App, error) {
 		PluginMgr:  pluginMgr,
 		APIServer:  apiServer,
 	}, nil
+}
+
+// launchPlugins starts enabled plugins (e.g. MQTT plugin) as child processes.
+func launchPlugins(app *App) {
+	for _, name := range app.Config.Plugins.Enabled {
+		// Look for plugin binary in ./bin/ directory
+		binPath := filepath.Join("bin", name)
+		if _, err := exec.LookPath(binPath); err != nil {
+			slog.Warn("plugin binary not found, skipping", "name", name, "path", binPath)
+			continue
+		}
+
+		// All Phase 2 plugins use gRPC transport
+		if err := app.PluginMgr.LaunchGRPC(name, binPath, app.Config.Plugins.Enabled, &sdk.GRPCPlugin{}); err != nil {
+			slog.Error("failed to launch plugin", "name", name, "error", err)
+			continue
+		}
+		slog.Info("plugin launched", "name", name, "path", binPath)
+	}
 }
 
 func main() {
@@ -97,6 +119,9 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("storage verified", "path", app.Config.Storage.Path)
+
+	// Launch enabled plugins (MQTT, etc.) as child processes
+	launchPlugins(app)
 
 	// Start API server in goroutine (ListenAndServe blocks)
 	go func() {

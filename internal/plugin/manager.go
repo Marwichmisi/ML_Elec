@@ -91,6 +91,42 @@ func NewManager() *Manager {
 	}
 }
 
+// LaunchGRPC starts a plugin with gRPC transport (net/rpc disabled).
+// The grpcPlugin parameter should be a *sdk.GRPCPlugin or equivalent go-plugin.GRPCPlugin.
+func (m *Manager) LaunchGRPC(name, path string, enabledPlugins []string, grpcPlugin goplugin.Plugin) error {
+	if !isPluginEnabled(name, enabledPlugins) {
+		return fmt.Errorf("plugin %q is not enabled", name)
+	}
+
+	client := goplugin.NewClient(&goplugin.ClientConfig{
+		HandshakeConfig:  HandshakeConfig,
+		Plugins:          map[string]goplugin.Plugin{"sensor": grpcPlugin},
+		Cmd:              exec.Command(path),
+		Managed:          true,
+		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+	})
+
+	// Verify the plugin starts and connects
+	rpcClient, err := client.Client()
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("connecting to grpc plugin %q: %w", name, err)
+	}
+
+	// Dispense the plugin to verify it works
+	_, err = rpcClient.Dispense("sensor")
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("dispensing grpc plugin %q: %w", name, err)
+	}
+
+	m.mu.Lock()
+	m.clients[name] = client
+	m.mu.Unlock()
+
+	return nil
+}
+
 // Launch starts a plugin as a child process if it is in the enabled list.
 func (m *Manager) Launch(name, path string, enabledPlugins []string) error {
 	if !isPluginEnabled(name, enabledPlugins) {

@@ -10,10 +10,56 @@ import (
 
 // Config holds all configuration for the application.
 type Config struct {
-	NATS    NATSConfig    `yaml:"nats"`
-	Storage StorageConfig `yaml:"storage"`
-	API     APIConfig     `yaml:"api"`
-	Plugins PluginsConfig `yaml:"plugins"`
+	NATS       NATSConfig       `yaml:"nats"`
+	Storage    StorageConfig    `yaml:"storage"`
+	API        APIConfig        `yaml:"api"`
+	Plugins    PluginsConfig    `yaml:"plugins"`
+	MQTT       MQTTConfig       `yaml:"mqtt"`
+	Validation ValidationConfig `yaml:"validation"`
+	Assets     AssetsConfig     `yaml:"assets"`
+}
+
+// MQTTConfig holds MQTT broker and client configuration.
+type MQTTConfig struct {
+	Port         int    `yaml:"port"`
+	ClientID     string `yaml:"client_id"`
+	CleanSession bool   `yaml:"clean_session"`
+	KeepAlive    int    `yaml:"keep_alive"`
+	Topics       struct {
+		Subscribe string `yaml:"subscribe"`
+		Status    string `yaml:"status"`
+	} `yaml:"topics"`
+}
+
+// ValidationConfig holds 3-level data validation configuration.
+type ValidationConfig struct {
+	Ranges    map[string]RangeConfig `yaml:"ranges"`
+	Timestamp TimestampConfig        `yaml:"timestamp"`
+	Health    HealthConfig           `yaml:"health"`
+}
+
+// RangeConfig defines min/max bounds for a sensor type.
+type RangeConfig struct {
+	Min float64 `yaml:"min"`
+	Max float64 `yaml:"max"`
+}
+
+// TimestampConfig defines acceptable timestamp drift bounds.
+type TimestampConfig struct {
+	MaxFutureDrift string `yaml:"max_future_drift"`
+	MaxPastDrift   string `yaml:"max_past_drift"`
+}
+
+// HealthConfig defines payload health validation bounds.
+type HealthConfig struct {
+	MaxPayloadSize int `yaml:"max_payload_size"`
+	MinPayloadSize int `yaml:"min_payload_size"`
+}
+
+// AssetsConfig holds asset registry configuration.
+type AssetsConfig struct {
+	AutoRegister bool   `yaml:"auto_register"`
+	DefaultSite  string `yaml:"default_site"`
 }
 
 // NATSConfig holds NATS server configuration.
@@ -52,6 +98,38 @@ func DefaultConfig() *Config {
 		},
 		Plugins: PluginsConfig{
 			Enabled: []string{},
+		},
+		MQTT: MQTTConfig{
+			Port:         1883,
+			ClientID:     "mqtt-plugin",
+			CleanSession: false,
+			KeepAlive:    30,
+			Topics: struct {
+				Subscribe string `yaml:"subscribe"`
+				Status    string `yaml:"status"`
+			}{
+				Subscribe: "esp32/#",
+				Status:    "sys/mqtt-plugin/status",
+			},
+		},
+		Validation: ValidationConfig{
+			Ranges: map[string]RangeConfig{
+				"temperature": {Min: -40.0, Max: 150.0},
+				"humidity":    {Min: 0.0, Max: 100.0},
+				"current":     {Min: 0.0, Max: 1000.0},
+			},
+			Timestamp: TimestampConfig{
+				MaxFutureDrift: "5s",
+				MaxPastDrift:   "24h",
+			},
+			Health: HealthConfig{
+				MaxPayloadSize: 1024,
+				MinPayloadSize: 1,
+			},
+		},
+		Assets: AssetsConfig{
+			AutoRegister: true,
+			DefaultSite:  "factory-1",
 		},
 	}
 }

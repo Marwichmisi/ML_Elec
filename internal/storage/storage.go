@@ -199,7 +199,7 @@ func NewForTest(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("WAL mode not enabled: got %s", journalMode)
 	}
 
-	// Create table directly for tests (no migration files needed)
+	// Create tables directly for tests (no migration files needed)
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS sensor_readings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +211,40 @@ func NewForTest(dbPath string) (*Store, error) {
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("creating sensor_readings table: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS assets (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			site TEXT NOT NULL DEFAULT 'factory-1',
+			area TEXT NOT NULL DEFAULT '',
+			line TEXT NOT NULL DEFAULT '',
+			type TEXT NOT NULL DEFAULT 'machine',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating assets table: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS asset_sensors (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			asset_id INTEGER NOT NULL,
+			sensor_id TEXT NOT NULL,
+			sensor_type TEXT NOT NULL DEFAULT 'generic',
+			topic TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+			UNIQUE(asset_id, sensor_id)
+		)
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating asset_sensors table: %w", err)
 	}
 
 	return &Store{db: db}, nil
@@ -328,6 +362,49 @@ func (s *Store) CreateAssetSensor(ctx context.Context, assetID int64, sensor *As
 		return nil, fmt.Errorf("inserting asset sensor: %w", err)
 	}
 	return sensor, nil
+}
+
+// ListAllSensors returns all sensors across assets with pagination.
+func (s *Store) ListAllSensors(ctx context.Context, page, limit int) ([]AssetSensor, int, error) {
+	offset := (page - 1) * limit
+
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM asset_sensors").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("counting asset sensors: %w", err)
+	}
+
+	// Fetch page
+	query, args, err := squirrel.Select("id", "asset_id", "sensor_id", "sensor_type", "topic", "created_at").
+		From("asset_sensors").
+		OrderBy("id ASC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("building select asset sensors query: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("querying asset sensors: %w", err)
+	}
+	defer rows.Close()
+
+	var sensors []AssetSensor
+	for rows.Next() {
+		var s AssetSensor
+		if err := rows.Scan(&s.ID, &s.AssetID, &s.SensorID, &s.SensorType, &s.Topic, &s.CreatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scanning asset sensor: %w", err)
+		}
+		sensors = append(sensors, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterating asset sensors: %w", err)
+	}
+
+	return sensors, total, nil
 }
 
 // GetAssetSensors returns sensors for a given asset.

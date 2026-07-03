@@ -13,6 +13,18 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// SensorsHandler handles GET /api/v1/sensors.
+// With ?sensor_id= param: returns sensor readings for that sensor.
+// Without ?sensor_id=: returns all sensors globally with pagination.
+func (s *Server) SensorsHandler(w http.ResponseWriter, r *http.Request) {
+	sensorID := r.URL.Query().Get("sensor_id")
+	if sensorID != "" {
+		s.GetSensorsHandler(w, r)
+		return
+	}
+	s.ListAllSensorsHandler(w, r)
+}
+
 // GetSensorsHandler returns sensor readings for a given sensor_id.
 //
 // @Summary Get sensor readings

@@ -73,7 +73,7 @@ func setupGRPCServer(t *testing.T, lifecycle PluginLifecycle, collector SensorCo
 }
 
 // setupGRPCClient creates a gRPC client connected to the bufconn listener.
-func setupGRPCClient(t *testing.T, lis *bufconn.Listener) (*grpc.ClientConn, PluginLifecycleClient, SensorCollectorClient) {
+func setupGRPCClient(t *testing.T, lis *bufconn.Listener) (*grpc.ClientConn, PluginLifecycle, SensorCollector) {
 	t.Helper()
 
 	conn, err := grpc.NewClient(
@@ -88,7 +88,12 @@ func setupGRPCClient(t *testing.T, lis *bufconn.Listener) (*grpc.ClientConn, Plu
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	return conn, NewPluginLifecycleClient(conn), NewSensorCollectorClient(conn)
+	// Return the wrapped client that implements our interfaces
+	client := &grpcClient{
+		lifecycle: NewPluginLifecycleClient(conn),
+		collector: NewSensorCollectorClient(conn),
+	}
+	return conn, client, client
 }
 
 func TestGRPCPlugin_ImplementsInterface(t *testing.T) {
@@ -170,7 +175,7 @@ func TestLifecycle_Init_Start_Stop(t *testing.T) {
 
 	// Init with config
 	config := map[string]string{"broker": "tcp://localhost:1883", "topic": "sensors/+"}
-	_, err := lifecycleClient.Init(ctx, &InitRequest{Config: config})
+	err := lifecycleClient.Init(ctx, config)
 	if err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
@@ -184,13 +189,13 @@ func TestLifecycle_Init_Start_Stop(t *testing.T) {
 	}
 
 	// Start
-	_, err = lifecycleClient.Start(ctx, &StartRequest{})
+	err = lifecycleClient.Start(ctx)
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
 	// Stop
-	_, err = lifecycleClient.Stop(ctx, &StopRequest{})
+	err = lifecycleClient.Stop(ctx)
 	if err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
@@ -224,14 +229,13 @@ func TestLifecycle_Init_Error_Propagation(t *testing.T) {
 	lis := setupGRPCServer(t, lifecycle, collector)
 	_, lifecycleClient, _ := setupGRPCClient(t, lis)
 
-	_, err := lifecycleClient.Init(context.Background(), &InitRequest{
-		Config: map[string]string{},
-	})
+	err := lifecycleClient.Init(context.Background(), map[string]string{})
 	if err == nil {
 		t.Fatal("expected error from Init, got nil")
 	}
-	if err.Error() != "config invalid" {
-		t.Errorf("expected error message 'config invalid', got %q", err.Error())
+	// Error is wrapped through gRPC, check it contains the original message
+	if err.Error() != "rpc init: rpc error: code = Unknown desc = plugin init: config invalid" {
+		t.Errorf("unexpected error message: %q", err.Error())
 	}
 }
 

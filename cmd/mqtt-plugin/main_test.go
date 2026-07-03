@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -14,6 +18,9 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 	natsclient "github.com/nats-io/nats.go"
+
+	"ml-elec/internal/config"
+	"ml-elec/internal/storage"
 )
 
 // TestStartBroker verifies the embedded broker starts on a configurable port.
@@ -730,6 +737,428 @@ func TestMQTTPluginLifecycle(t *testing.T) {
 	// This test verifies the plugin manager lifecycle without actual process spawning.
 	// It tests the LaunchGRPC interface and IsRunning/Kill behavior.
 	t.Skip("lifecycle test requires built binaries — covered by TestCrashIsolation")
+}
+
+// TestConnectToNATS verifies the plugin connects to an embedded NATS server.
+func TestConnectToNATS(t *testing.T) {
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	// Parse host and port from client URL
+	natsURL := natsSrv.ClientURL()
+	// natsURL is like "nats://127.0.0.1:XXXXX"
+	var host string
+	var port int
+	_, err = fmt.Sscanf(natsURL, "nats://%s:%d", &host, &port)
+	if err != nil {
+		// Fallback: use strings to parse
+		natsURL = strings.TrimPrefix(natsURL, "nats://")
+		parts := strings.Split(natsURL, ":")
+		if len(parts) != 2 {
+			t.Fatalf("failed to parse NATS URL %q: %v", natsURL, err)
+		}
+		host = parts[0]
+		fmt.Sscanf(parts[1], "%d", &port)
+	}
+
+	backoffCfg := config.ReconnectBackoffConfig{
+		InitialInterval: "1s",
+		MaxInterval:     "30s",
+		Multiplier:      2.0,
+	}
+
+	conn, err := ConnectToNATS(host, port, backoffCfg)
+	if err != nil {
+		t.Fatalf("ConnectToNATS failed: %v", err)
+	}
+	defer conn.Close()
+
+	if !conn.IsConnected() {
+		t.Fatal("NATS connection not established")
+	}
+}
+
+// TestConnectToNATSUnreachable verifies ConnectToNATS returns error when server is unreachable.
+func TestConnectToNATSUnreachable(t *testing.T) {
+	backoffCfg := config.ReconnectBackoffConfig{
+		InitialInterval: "1s",
+		MaxInterval:     "30s",
+		Multiplier:      2.0,
+	}
+
+	// Connect to a port that nothing is listening on
+	conn, err := ConnectToNATS("127.0.0.1", 19999, backoffCfg)
+	if err == nil {
+		conn.Close()
+		t.Fatal("expected error for unreachable NATS server")
+	}
+}
+
+// TestMQTTPluginStartStop verifies Start creates NATS and storage, Stop cleans up.
+func TestMQTTPluginStartStop(t *testing.T) {
+	// Start embedded NATS server
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsURL := natsSrv.ClientURL()
+	var host string
+	var port int
+	natsURL = strings.TrimPrefix(natsURL, "nats://")
+	parts := strings.Split(natsURL, ":")
+	if len(parts) != 2 {
+		t.Fatalf("failed to parse NATS URL %q", natsURL)
+	}
+	host = parts[0]
+	fmt.Sscanf(parts[1], "%d", &port)
+
+	cfg := config.DefaultConfig()
+	cfg.MQTT.NATSHost = host
+	cfg.MQTT.NATSPort = port
+	cfg.MQTT.Port = 0 // let OS assign port
+
+	plugin := &MQTTPlugin{config: cfg}
+
+	err = plugin.Start(context.Background())
+	if err != nil {
+		t.Fatalf("plugin.Start failed: %v", err)
+	}
+
+	if plugin.natsConn == nil {
+		t.Error("natsConn should not be nil after Start")
+	}
+	if plugin.store == nil {
+		t.Error("store should not be nil after Start")
+	}
+	if plugin.broker == nil {
+		t.Error("broker should not be nil after Start")
+	}
+	if plugin.client == nil {
+		t.Error("client should not be nil after Start")
+	}
+
+	err = plugin.Stop(context.Background())
+	if err != nil {
+		t.Fatalf("plugin.Stop failed: %v", err)
+	}
+}
+
+// TestMessageHandlerPublishesToNATS verifies the message handler publishes valid JSON to NATS.
+func TestMessageHandlerPublishesToNATS(t *testing.T) {
+	// Start embedded NATS server
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	// Create in-memory SQLite store
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	// Subscribe to NATS sensor subjects
+	received := make(chan []byte, 1)
+	_, err = natsConn.Subscribe("sensor.>", func(msg *natsclient.Msg) {
+		received <- msg.Data
+	})
+	if err != nil {
+		t.Fatalf("NATS subscribe failed: %v", err)
+	}
+	natsConn.Flush()
+
+	// Build the message handler
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Publish a valid JSON message
+	payload := fmt.Sprintf(`{"ts":%d,"values":{"temperature":25.3}}`, time.Now().Unix())
+	handler("esp32/sensor1", []byte(payload))
+
+	// Verify NATS received the message
+	select {
+	case msg := <-received:
+		if string(msg) != payload {
+			t.Errorf("NATS received mismatch:\n  sent:     %s\n  received: %s", payload, string(msg))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for NATS message")
+	}
+}
+
+// TestMessageHandlerPersistsToSQLite verifies the message handler persists to SQLite.
+func TestMessageHandlerPersistsToSQLite(t *testing.T) {
+	// Start embedded NATS server (needed for handler)
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	// Create in-memory SQLite store
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	// Build the message handler
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Publish a valid JSON message
+	payload := fmt.Sprintf(`{"ts":%d,"values":{"temperature":25.3}}`, time.Now().Unix())
+	handler("esp32/sensor1", []byte(payload))
+
+	// Give a small delay for async insert
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify SQLite has the reading
+	readings, err := store.GetSensors(context.Background(), "temperature", 10)
+	if err != nil {
+		t.Fatalf("GetSensors failed: %v", err)
+	}
+	if len(readings) != 1 {
+		t.Fatalf("expected 1 reading in SQLite, got %d", len(readings))
+	}
+	if readings[0].Value != 25.3 {
+		t.Errorf("expected value 25.3, got %f", readings[0].Value)
+	}
+}
+
+// TestMessageHandlerValidationError verifies invalid data is rejected and logged.
+func TestMessageHandlerValidationError(t *testing.T) {
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	// Subscribe to NATS to verify nothing is published
+	received := make(chan []byte, 1)
+	_, err = natsConn.Subscribe("sensor.>", func(msg *natsclient.Msg) {
+		received <- msg.Data
+	})
+	if err != nil {
+		t.Fatalf("NATS subscribe failed: %v", err)
+	}
+	natsConn.Flush()
+
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Out-of-range temperature (max is 150)
+	invalidPayload := fmt.Sprintf(`{"ts":%d,"values":{"temperature":200.0}}`, time.Now().Unix())
+	handler("esp32/sensor1", []byte(invalidPayload))
+
+	// Should NOT receive on NATS
+	select {
+	case msg := <-received:
+		t.Errorf("NATS should not have received invalid message, got: %s", string(msg))
+	case <-time.After(500 * time.Millisecond):
+		// Expected: no message received
+	}
+
+	// Should NOT have any readings in SQLite
+	readings, err := store.GetSensors(context.Background(), "temperature", 10)
+	if err != nil {
+		t.Fatalf("GetSensors failed: %v", err)
+	}
+	if len(readings) != 0 {
+		t.Errorf("expected 0 readings for invalid data, got %d", len(readings))
+	}
+}
+
+// TestMessageHandlerJSONParseError verifies JSON parse errors are logged.
+func TestMessageHandlerJSONParseError(t *testing.T) {
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	// Capture log output
+	var logBuf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+
+	received := make(chan []byte, 1)
+	_, err = natsConn.Subscribe("sensor.>", func(msg *natsclient.Msg) {
+		received <- msg.Data
+	})
+	if err != nil {
+		t.Fatalf("NATS subscribe failed: %v", err)
+	}
+	natsConn.Flush()
+
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Invalid JSON
+	handler("esp32/sensor1", []byte("not valid json"))
+
+	// Verify log contains error
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "failed to parse payload") && !strings.Contains(logOutput, "error") {
+		t.Errorf("expected error log for invalid JSON, got: %s", logOutput)
+	}
+
+	// Should NOT receive on NATS
+	select {
+	case msg := <-received:
+		t.Errorf("NATS should not have received invalid message, got: %s", string(msg))
+	case <-time.After(500 * time.Millisecond):
+		// Expected
+	}
+}
+
+// TestMessageHandlerEmptyPayload verifies empty payloads are rejected.
+func TestMessageHandlerEmptyPayload(t *testing.T) {
+	natsOpts := &natsserver.Options{
+		Host: "127.0.0.1",
+		Port: -1,
+	}
+	natsSrv, err := natsserver.NewServer(natsOpts)
+	if err != nil {
+		t.Fatalf("failed to create NATS server: %v", err)
+	}
+	natsSrv.ConfigureLogger()
+	natsSrv.Start()
+	if !natsSrv.ReadyForConnections(10 * time.Second) {
+		t.Fatal("NATS server not ready")
+	}
+	defer natsSrv.Shutdown()
+
+	natsConn, err := natsclient.Connect(natsSrv.ClientURL())
+	if err != nil {
+		t.Fatalf("NATS connect failed: %v", err)
+	}
+	defer natsConn.Close()
+
+	tmpDir := t.TempDir()
+	store, err := storage.NewForTest(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("storage.NewForTest failed: %v", err)
+	}
+	defer store.Close()
+
+	received := make(chan []byte, 1)
+	_, err = natsConn.Subscribe("sensor.>", func(msg *natsclient.Msg) {
+		received <- msg.Data
+	})
+	if err != nil {
+		t.Fatalf("NATS subscribe failed: %v", err)
+	}
+	natsConn.Flush()
+
+	handler := buildMessageHandler(natsConn, store, config.DefaultConfig())
+
+	// Empty payload
+	handler("esp32/sensor1", []byte{})
+
+	// Should NOT receive on NATS
+	select {
+	case msg := <-received:
+		t.Errorf("NATS should not have received empty message, got: %s", string(msg))
+	case <-time.After(500 * time.Millisecond):
+		// Expected
+	}
 }
 
 // TestFullPipelineMQTTToNATS verifies the full MQTT → validate → NATS pipeline.

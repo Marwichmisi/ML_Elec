@@ -17,11 +17,13 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-hclog"
+	natsclient "github.com/nats-io/nats.go"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/auth"
 	"github.com/mochi-mqtt/server/v2/listeners"
 
 	"ml-elec/internal/config"
+	"ml-elec/internal/storage"
 	sdk "ml-elec/pkg/sdk/v1"
 )
 
@@ -95,8 +97,103 @@ func ConnectClient(brokerAddr string, clientID string) (pahomqtt.Client, error) 
 	return client, nil
 }
 
+// ConnectToNATS connects to the core's embedded NATS server with exponential backoff.
+// This does NOT create a new NATS server — it connects to the existing one.
+func ConnectToNATS(host string, port int, backoffCfg config.ReconnectBackoffConfig) (*natsclient.Conn, error) {
+	url := fmt.Sprintf("nats://%s:%d", host, port)
+	initialInterval, err := time.ParseDuration(backoffCfg.InitialInterval)
+	if err != nil {
+		initialInterval = 1 * time.Second
+	}
+	conn, err := natsclient.Connect(url,
+		natsclient.MaxReconnects(-1),
+		natsclient.ReconnectWait(initialInterval),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to NATS at %s: %w", url, err)
+	}
+	return conn, nil
+}
+
 // MessageHandler is called when a subscribed message is received.
 type MessageHandler func(topic string, payload []byte)
+
+// buildMessageHandler creates a message handler that validates, publishes to NATS, and persists to SQLite.
+func buildMessageHandler(natsConn *natsclient.Conn, store *storage.Store, cfg *config.Config) MessageHandler {
+	validationCfg := buildValidationCfg(cfg.Validation)
+	return func(topic string, payload []byte) {
+		// Validate the message
+		if err := ValidateMessage(payload, validationCfg); err != nil {
+			slog.Error("message validation failed", "topic", topic, "error", err, "payload_len", len(payload))
+			return
+		}
+
+		// Parse JSON or binary payload
+		reading, jsonErr := ParseJSONPayload(payload)
+		if jsonErr != nil {
+			// Try binary
+			binResult, binErr := ParseBinaryPayload(payload)
+			if binErr != nil {
+				slog.Error("failed to parse payload", "topic", topic, "json_err", jsonErr, "bin_err", binErr)
+				return
+			}
+			// Binary: publish raw to NATS
+			natsSubject := "sensor." + topic
+			if err := natsConn.Publish(natsSubject, payload); err != nil {
+				slog.Error("NATS publish failed", "topic", topic, "subject", natsSubject, "error", err)
+			}
+			// Persist binary reading (one entry per sample count metadata)
+			ts := time.Unix(0, binResult.Header.Timestamp)
+			if err := store.InsertSensor(context.Background(), topic, float64(binResult.Header.SampleCount), ts); err != nil {
+				slog.Error("storage insert failed", "topic", topic, "error", err)
+			}
+			return
+		}
+
+		// JSON: publish each sensor value to NATS
+		natsSubject := "sensor." + topic
+		if err := natsConn.Publish(natsSubject, payload); err != nil {
+			slog.Error("NATS publish failed", "topic", topic, "subject", natsSubject, "error", err)
+		}
+
+		// Persist each sensor value to SQLite
+		ts := time.Unix(reading.Timestamp, 0)
+		for sensorName, value := range reading.Values {
+			if err := store.InsertSensor(context.Background(), sensorName, value, ts); err != nil {
+				slog.Error("storage insert failed", "sensor", sensorName, "error", err)
+			}
+		}
+	}
+}
+
+// buildValidationCfg converts config.ValidationConfig to the local ValidationConfig type.
+func buildValidationCfg(cfg config.ValidationConfig) ValidationConfig {
+	maxFutureDrift, err := time.ParseDuration(cfg.Timestamp.MaxFutureDrift)
+	if err != nil {
+		maxFutureDrift = 5 * time.Second
+	}
+	maxPastDrift, err := time.ParseDuration(cfg.Timestamp.MaxPastDrift)
+	if err != nil {
+		maxPastDrift = 24 * time.Hour
+	}
+
+	ranges := make(map[string]RangeConfig, len(cfg.Ranges))
+	for sensor, r := range cfg.Ranges {
+		ranges[sensor] = RangeConfig{Min: r.Min, Max: r.Max}
+	}
+
+	return ValidationConfig{
+		Ranges: ranges,
+		Timestamp: TimestampConfig{
+			MaxFutureDrift: maxFutureDrift,
+			MaxPastDrift:   maxPastDrift,
+		},
+		Health: HealthConfig{
+			MaxPayloadSize: cfg.Health.MaxPayloadSize,
+			MinPayloadSize: cfg.Health.MinPayloadSize,
+		},
+	}
+}
 
 // SubscribeAndBridge subscribes to the given topic filter and calls the handler
 // for each received message.
@@ -299,9 +396,11 @@ func ValidateMessage(payload []byte, cfg ValidationConfig) error {
 
 // MQTTPlugin implements the PluginLifecycle and SensorCollector interfaces.
 type MQTTPlugin struct {
-	config *config.Config
-	broker *mqtt.Server
-	client pahomqtt.Client
+	config   *config.Config
+	broker   *mqtt.Server
+	client   pahomqtt.Client
+	natsConn *natsclient.Conn // NATS connection to core's embedded server
+	store    *storage.Store   // SQLite storage for persistence
 }
 
 // Init initializes the plugin with the provided configuration.
@@ -330,15 +429,37 @@ func (p *MQTTPlugin) Start(_ context.Context) error {
 	}
 	p.client = client
 
+	// Connect to core's embedded NATS server
+	natsConn, err := ConnectToNATS(p.config.MQTT.NATSHost, p.config.MQTT.NATSPort, p.config.MQTT.ReconnectBackoff)
+	if err != nil {
+		return fmt.Errorf("connecting to NATS: %w", err)
+	}
+	p.natsConn = natsConn
+
+	// Initialize SQLite storage
+	store, err := storage.New(&p.config.Storage)
+	if err != nil {
+		return fmt.Errorf("opening storage: %w", err)
+	}
+	p.store = store
+
 	slog.Info("mqtt plugin started",
 		"port", p.config.MQTT.Port,
 		"topic", p.config.MQTT.Topics.Subscribe,
+		"nats_host", p.config.MQTT.NATSHost,
+		"nats_port", p.config.MQTT.NATSPort,
 	)
 	return nil
 }
 
 // Stop gracefully stops the MQTT plugin.
 func (p *MQTTPlugin) Stop(_ context.Context) error {
+	if p.natsConn != nil {
+		p.natsConn.Close()
+	}
+	if p.store != nil {
+		p.store.Close()
+	}
 	if p.client != nil {
 		p.client.Disconnect(250)
 	}

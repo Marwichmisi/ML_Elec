@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE JETABLE — fiche de cas + dashboard minimal</title>
+<!-- Three variants of fiche + dashboard, switchable via ?variant=A|B|C, on throwaway branch prototype/fiche-dashboard. Question: quelle structure pour formulaire ultra-court + dashboard minimal ? -->
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f4f2;color:#1a1a1a;padding-bottom:90px}
+.proto-banner{background:#111;color:#ffd400;padding:8px 16px;font-weight:700;font-size:13px}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.kpi{background:#fff;border:1px solid #ddd;padding:10px 14px;border-radius:8px;margin:12px 0;display:flex;gap:18px;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700}
+.basse{background:#dff0d8}.haute{background:#ffe6a3}.critique{background:#f5b5b5}
+table{width:100%;border-collapse:collapse;background:#fff}
+th,td{border-bottom:1px solid #eee;padding:8px;text-align:left;font-size:14px}
+.grav{height:8px;background:#eee;border-radius:4px;min-width:80px}.grav>i{display:block;height:8px;border-radius:4px;background:#c00}
+button{cursor:pointer;padding:6px 12px;border-radius:6px;border:1px solid #999;background:#fff}
+button.primary{background:#111;color:#fff;border-color:#111}
+.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.col{background:#ececec;border-radius:8px;padding:10px;min-height:200px}
+.card{background:#fff;border-radius:8px;padding:10px;margin-bottom:10px;border-left:6px solid #999}
+.timeline{border-left:3px solid #111;margin-left:10px;padding-left:16px}
+.t-item{background:#fff;border-radius:8px;padding:10px;margin-bottom:12px}
+form.mini{background:#fff;border:1px dashed #888;border-radius:8px;padding:12px;margin-top:16px;display:grid;gap:8px}
+form.mini input,form.mini select{padding:8px;border:1px solid #bbb;border-radius:6px;width:100%}
+#switcher{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#111;color:#fff;border-radius:30px;padding:8px 8px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:99}
+#switcher button{background:#fff;color:#111;border:none;font-size:18px;width:36px;height:36px;border-radius:50%}
+#state{background:#111;color:#0f0;font-size:12px;padding:12px;border-radius:8px;white-space:pre-wrap;margin-top:16px}
+@media(max-width:800px){.kanban{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="proto-banner">PROTOTYPE JETABLE — ne pas merger dans main. Question : quelle structure pour fiche ultra-courte + dashboard minimal ? Données stub en mémoire, wipe au reload.</div>
+<div class="wrap">
+<div class="kpi" id="kpi"></div>
+<div id="app"></div>
+<form class="mini" id="fiche-form" onsubmit="return submitFiche(event)">
+<h3 style="margin:0">Fiche de cas ultra-courte (technicien, &lt;30s)</h3>
+<input id="f-symptome" placeholder="Symptôme ex: bruit roulement" required>
+<input id="f-contexte" placeholder="Contexte ex: ligne 2, presse 4">
+<input id="f-cause" placeholder="Cause probable ex: usure roulement" required>
+<input id="f-action" placeholder="Action ex: resserrer + surveiller" required>
+<input id="f-resultat" placeholder="Résultat ex: bruit réduit">
+<label>Confiance <select id="f-confiance"><option>0.6</option><option selected>0.75</option><option>0.9</option></select></label>
+<button class="primary" type="submit">Créer fiche → en attente</button>
+</form>
+<h4>État complet (surface state après chaque action)</h4>
+<pre id="state"></pre>
+</div>
+<div id="switcher">
+<button onclick="cycle(-1)" title="précédent">←</button>
+<span id="vlabel"></span>
+<button onclick="cycle(1)" title="suivant">→</button>
+</div>
+<script>
+let DB=[
+{id:"D1",cause:"usure roulement",priorite:"haute",gravite:79,confiance:0.9,action:"resserrer + surveiller",temps_h:12,statut:"en_attente",symptome:"bruit 7.2mm/s",contexte:"ligne 2 presse 4"},
+{id:"D2",cause:"surchauffe moteur",priorite:"haute",gravite:65,confiance:0.75,action:"arrêt + contrôle ventilo",temps_h:4,statut:"en_attente",symptome:"82°C",contexte:"convoyeur 1"},
+{id:"D3",cause:"dérive courant",priorite:"basse",gravite:32,confiance:0.6,action:"surveiller",temps_h:36,statut:"retenue",symptome:"+8% courant",contexte:"pompe 3"}];
+function kpi(){let r=DB.filter(d=>d.statut==="retenue").length,j=DB.filter(d=>d.statut==="rejetee").length;let t=r+j;let pct=t?Math.round(j/t*100):0;return {retenues:r,rejetees:j,total:t,pct};}
+function renderKPI(){let k=kpi();document.getElementById("kpi").innerHTML=`<span><b>Faux positifs (30j): ${k.pct}%</b> (${k.rejetees}/${k.total}) — cible démo &lt;20%, atelier &lt;10%</span><span>En attente: ${DB.filter(d=>d.statut==="en_attente").length}</span><span>Gravité paliers: &lt;40 basse / 40-75 haute / &gt;75 critique</span>`;}
+function setStatut(id,s){DB=DB.map(d=>d.id===id?{...d,statut:s}:d);render();}
+function submitFiche(e){e.preventDefault();let n={id:"D"+(DB.length+1),cause:document.getElementById("f-cause").value,priorite:"haute",gravite:50,confiance:parseFloat(document.getElementById("f-confiance").value),action:document.getElementById("f-action").value,temps_h:12,statut:"en_attente",symptome:document.getElementById("f-symptome").value,contexte:document.getElementById("f-contexte").value};DB.push(n);e.target.reset();render();return false;}
+function gravBar(g){return `<div class="grav"><i style="width:${g}%"></i></div>${g}/100`;}
+function getVariant(){let v=new URLSearchParams(location.search).get("variant");return ["A","B","C"].includes(v)?v:"A";}
+function setVariant(v){let u=new URL(location.href);u.searchParams.set("variant",v);history.replaceState(null,"","?variant="+v);render();}
+function cycle(d){let order=["A","B","C"];let i=order.indexOf(getVariant());setVariant(order[(i+d+3)%3]);}
+const Names={A:"A (Tableau atelier)",B:"B (Kanban focus)",C:"C (Timeline criticité)"};
+function render(){
+renderKPI();
+let v=getVariant();
+document.getElementById("vlabel").textContent=v+" "+Names[v];
+let el=document.getElementById("app");
+if(v==="A"){
+el.innerHTML=`<h2>Variante A — Tableau dense atelier</h2><p>1 ligne = 1 décision. Boutons Retenue/Rejetée inline. Formulaire en bas (drawer simulé).</p><table><tr><th>Décision</th><th>Priorité</th><th>Gravité</th><th>Action</th><th>Temps rest.</th><th>Confiance</th><th>Statut</th><th>Vote</th></tr>${DB.map(d=>`<tr><td><b>${d.cause}</b><br><small>${d.symptome} — ${d.contexte}</small></td><td><span class="badge ${d.priorite}">${d.priorite}</span></td><td>${gravBar(d.gravite)}</td><td>${d.action}</td><td>${d.temps_h}h</td><td>${d.confiance}</td><td>${d.statut}</td><td><button onclick="setStatut('${d.id}','retenue')">✓</button> <button onclick="setStatut('${d.id}','rejetee')">✗</button></td></tr>`).join("")}</table>`;
+}
+if(v==="B"){
+let cols=["en_attente","retenue","rejetee"];
+el.innerHTML=`<h2>Variante B — Kanban mobile-first</h2><p>3 colonnes = statuts. Carte = cause + gros chiffre gravité + action. Pensée tactile gants atelier.</p><div class="kanban">${cols.map(c=>`<div class="col"><b>${c}</b>${DB.filter(d=>d.statut===c).map(d=>`<div class="card" style="border-color:${d.gravite>75?'red':d.gravite>=40?'orange':'green'}"><div style="font-size:28px;font-weight:800">${d.gravite}</div><b>${d.cause}</b><br><small>${d.action} — ${d.temps_h}h — conf ${d.confiance}</small><br><span class="badge ${d.priorite}">${d.priorite}</span><br><br><button onclick="setStatut('${d.id}','retenue')">Retenue</button> <button onclick="setStatut('${d.id}','rejetee')">Rejetée</button></div>`).join("")}</div>`).join("")}</div>`;
+}
+if(v==="C"){
+let sorted=[...DB].sort((a,b)=>a.temps_h-b.temps_h);
+el.innerHTML=`<h2>Variante C — Timeline par urgence</h2><p>Trié par temps restant croissant. Jauge couleur = gravité. Header KPI + formulaire modal simulé en bas.</p><div class="timeline">${sorted.map(d=>`<div class="t-item"><b>T-${d.temps_h}h — ${d.cause}</b> <span class="badge ${d.priorite}">${d.priorite}</span> ${d.statut}<br>${gravBar(d.gravite)}<br><small>${d.symptome} | ${d.contexte} | ${d.action} | conf ${d.confiance}</small><br><button onclick="setStatut('${d.id}','retenue')">✓ Retenue</button> <button onclick="setStatut('${d.id}','rejetee')">✗ Rejetée</button></div>`).join("")}</div>`;
+}
+document.getElementById("state").textContent=JSON.stringify({variant:v,kpi:kpi(),decisions:DB},null,2);
+}
+document.addEventListener("keydown",e=>{if(["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName))return;if(e.key==="ArrowLeft")cycle(-1);if(e.key==="ArrowRight")cycle(1);});
+render();
+</script>
+</body>
+</html>
